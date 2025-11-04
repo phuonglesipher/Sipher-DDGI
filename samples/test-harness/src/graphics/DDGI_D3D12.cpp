@@ -747,14 +747,14 @@ namespace Graphics
             bool CreateCachingBuffers(Globals& d3d, GlobalResources& d3dResources, Resources& resources, UINT cachingCount, std::ofstream& log)
             {
                 //Create hit caching buffer
-                BufferDesc desc = { sizeof(PackedPayload) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE };
+                BufferDesc desc = { sizeof(PackedPayload) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
                 CHECK(CreateBuffer(d3d, desc, &resources.HitCachingResource), "create hit caching buffer!\n", log);
             #ifdef GFX_NAME_OBJECTS
                 resources.HitCachingResource->SetName(L"Hit Caching Structured Buffer");
             #endif
 
                 // Create the DDGIVolume constants device buffer resource
-                desc = { sizeof(float3) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE };
+                desc = { sizeof(float3) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
                 CHECK(CreateBuffer(d3d, desc, &resources.RadianceCachingResource), "create radiance caching structured buffer!\n", log);
             #ifdef GFX_NAME_OBJECTS
                 resources.RadianceCachingResource->SetName(L"Radiance Caching Structured Buffer");
