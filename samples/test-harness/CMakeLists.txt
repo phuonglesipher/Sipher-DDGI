@@ -385,7 +385,7 @@ if(RTXGI_API_D3D12_ENABLE)
     set_target_properties(${TARGET_EXE} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ../bin/d3d12/$<CONFIG>)
 
     # Set the default scene config
-    set_target_properties(${TARGET_EXE} PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS ${CMAKE_SOURCE_DIR}/samples/test-harness/config/cornell.ini)
+    set_target_properties(${TARGET_EXE} PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS ${CMAKE_SOURCE_DIR}/samples/test-harness/config/sponza.ini)
 
     # Add to the samples folder
     set_target_properties(${TARGET_EXE} PROPERTIES FOLDER "RTXGI Samples")
@@ -513,7 +513,7 @@ if(RTXGI_API_VULKAN_ENABLE)
     set_target_properties(${TARGET_EXE} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ../bin/vulkan/$<CONFIG>)
 
     # Set the default scene config
-    set_target_properties(${TARGET_EXE} PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS ${CMAKE_SOURCE_DIR}/samples/test-harness/config/cornell.ini)
+    set_target_properties(${TARGET_EXE} PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS ${CMAKE_SOURCE_DIR}/samples/test-harness/config/sponza.ini)
 
     # Add to the samples folder
     set_target_properties(${TARGET_EXE} PROPERTIES FOLDER "RTXGI Samples")
