@@ -268,9 +268,11 @@ namespace Graphics
 
             // RW Structured Buffers
             const int UAV_STB_TLAS_INSTANCES = UAV_START;                           //   6:   1 UAV for the Scene TLAS instance descriptors structured buffer
+            const int UAV_HIT_CACHING = UAV_STB_TLAS_INSTANCES + 1;
+            const int UAV_RADIANCE_CACHING = UAV_HIT_CACHING + 1;
 
             // Texture2D UAV
-            const int UAV_TEX2D_START = UAV_STB_TLAS_INSTANCES + 1;                 //   7:   RWTexture2D UAV Start
+            const int UAV_TEX2D_START = UAV_RADIANCE_CACHING + 1;                   //   7:   RWTexture2D UAV Start
             const int UAV_PT_OUTPUT = UAV_TEX2D_START;                              //   7:   1 UAV for the Path Tracer Output RWTexture
             const int UAV_PT_ACCUMULATION = UAV_PT_OUTPUT + 1;                      //   8    1 UAV for the Path Tracer Accumulation RWTexture
             const int UAV_GBUFFERA = UAV_PT_ACCUMULATION + 1;                       //   9:   1 UAV for the GBufferA RWTexture

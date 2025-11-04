@@ -744,6 +744,43 @@ namespace Graphics
                 return true;
             }
 
+            bool CreateCachingBuffers(Globals& d3d, GlobalResources& d3dResources, Resources& resources, UINT cachingCount, std::ofstream& log)
+            {
+                //Create hit caching buffer
+                BufferDesc desc = { sizeof(PackedPayload) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE };
+                CHECK(CreateBuffer(d3d, desc, &resources.HitCachingResource), "create hit caching buffer!\n", log);
+            #ifdef GFX_NAME_OBJECTS
+                resources.HitCachingResource->SetName(L"Hit Caching Structured Buffer");
+            #endif
+
+                // Create the DDGIVolume constants device buffer resource
+                desc = { sizeof(float3) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE };
+                CHECK(CreateBuffer(d3d, desc, &resources.RadianceCachingResource), "create radiance caching structured buffer!\n", log);
+            #ifdef GFX_NAME_OBJECTS
+                resources.RadianceCachingResource->SetName(L"Radiance Caching Structured Buffer");
+            #endif
+
+            #if !RTXGI_DDGI_RESOURCE_MANAGEMENT
+                // Add the constants structured buffer SRV to the descriptor heap
+                D3D12_UNORDERED_ACCESS_VIEW_DESC uavdesc = {};
+                uavdesc.Format = DXGI_FORMAT_UNKNOWN;
+                uavdesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+                uavdesc.Buffer.NumElements = cachingCount;
+                uavdesc.Buffer.StructureByteStride = sizeof(PackedPayload);
+                uavdesc.Buffer.FirstElement = 0;
+
+                D3D12_CPU_DESCRIPTOR_HANDLE handle;
+                handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_HIT_CACHING * d3dResources.srvDescHeapEntrySize);
+                d3d.device->CreateUnorderedAccessView(resources.HitCachingResource, nullptr, &uavdesc, handle);
+
+                uavdesc.Buffer.StructureByteStride = sizeof(float3);
+                handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
+                d3d.device->CreateUnorderedAccessView(resources.RadianceCachingResource, nullptr, &uavdesc, handle);
+            #endif
+
+                return true;
+            }
+
             //----------------------------------------------------------------------------------------------------------
             // Private Functions
             //----------------------------------------------------------------------------------------------------------
@@ -1144,6 +1181,8 @@ namespace Graphics
                 // Create the RTV descriptor heap
                 if (!CreateRTVDescriptorHeap(d3d, resources, numVolumes)) return false;
 
+                if (!CreateCachingBuffers(d3d, d3dResources, resources, resources.CacheCount, log)) return false;
+
                 // Initialize the DDGIVolumes
                 for (UINT volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
                 {
@@ -1351,6 +1390,9 @@ namespace Graphics
                 SAFE_RELEASE(resources.volumeConstantsSTB);
                 SAFE_RELEASE(resources.volumeConstantsSTBUpload);
                 resources.volumeConstantsSTBSizeInBytes = 0;
+
+                SAFE_RELEASE(resources.HitCachingResource);
+                SAFE_RELEASE(resources.RadianceCachingResource);
 
                 // Release volumes
                 for (size_t volumeIndex = 0; volumeIndex < resources.volumes.size(); volumeIndex++)

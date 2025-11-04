@@ -62,6 +62,10 @@ namespace Graphics
                 ID3D12Resource*              volumeConstantsSTBUpload = nullptr;
                 UINT                         volumeConstantsSTBSizeInBytes = 0;
 
+                ID3D12Resource*              HitCachingResource = nullptr;
+                ID3D12Resource*              RadianceCachingResource = nullptr;
+                UINT                         CacheCount = 20000;
+
                 // Variability Tracking
                 std::vector<uint32_t>        numVolumeVariabilitySamples;
 
