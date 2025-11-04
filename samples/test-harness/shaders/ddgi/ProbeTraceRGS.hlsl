@@ -11,6 +11,7 @@
 #include "../include/Descriptors.hlsl"
 #include "../include/Lighting.hlsl"
 #include "../include/RayTracing.hlsl"
+#include "../include/SpatialHash.hlsl"
 
 #include "../../../../rtxgi-sdk/shaders/ddgi/include/DDGIRootConstants.hlsl"
 #include "../../../../rtxgi-sdk/shaders/ddgi/Irradiance.hlsl"
@@ -155,6 +156,13 @@ void RayGen()
         DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, volume, payload.hitT);
         return;
     }
+
+    RWStructuredBuffer<HitCachingPayload> HitCachingBuffer = GetHitCachingBuffer();
+    uint HashID = SpatialHashIndex(payload.worldPosition, SPATIAL_HASH_VOXEL_SIZE);
+    HitCachingPayload NewPayload;
+    NewPayload.payload = packedPayload;
+    NewPayload.isActived = true;
+    HitCachingBuffer[HashID] = NewPayload;
 
     // Get the (dynamic) lights
     StructuredBuffer<Light> Lights = GetLights();

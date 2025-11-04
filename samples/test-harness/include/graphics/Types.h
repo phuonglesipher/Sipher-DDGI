@@ -73,6 +73,12 @@ namespace Graphics
                                        // 44
     };
 
+    struct HitCachingPayload
+    {
+        PackedPayload payload;
+        bool          isActived;
+    };
+
     struct ProbeVisualizationPayload
     {
         float  hitT;

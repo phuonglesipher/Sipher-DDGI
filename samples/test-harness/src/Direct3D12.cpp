@@ -958,6 +958,14 @@ namespace Graphics
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
                 range.OffsetInDescriptorsFromTableStart = DescriptorHeapOffsets::UAV_STB_TLAS_INSTANCES;
                 ranges.push_back(range);
+
+                range.RegisterSpace = 1;
+                range.OffsetInDescriptorsFromTableStart = DescriptorHeapOffsets::UAV_HIT_CACHING;
+                ranges.push_back(range);
+
+                range.RegisterSpace = 1;
+                range.OffsetInDescriptorsFromTableStart = DescriptorHeapOffsets::UAV_RADIANCE_CACHING;
+                //ranges.push_back(range);
             }
 
             // Bindless UAVs, RWTexture2D (u6, space0)

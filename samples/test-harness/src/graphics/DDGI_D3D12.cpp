@@ -747,7 +747,7 @@ namespace Graphics
             bool CreateCachingBuffers(Globals& d3d, GlobalResources& d3dResources, Resources& resources, UINT cachingCount, std::ofstream& log)
             {
                 //Create hit caching buffer
-                BufferDesc desc = { sizeof(PackedPayload) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+                BufferDesc desc = { sizeof(HitCachingPayload) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
                 CHECK(CreateBuffer(d3d, desc, &resources.HitCachingResource), "create hit caching buffer!\n", log);
             #ifdef GFX_NAME_OBJECTS
                 resources.HitCachingResource->SetName(L"Hit Caching Structured Buffer");
@@ -766,7 +766,7 @@ namespace Graphics
                 uavdesc.Format = DXGI_FORMAT_UNKNOWN;
                 uavdesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
                 uavdesc.Buffer.NumElements = cachingCount;
-                uavdesc.Buffer.StructureByteStride = sizeof(PackedPayload);
+                uavdesc.Buffer.StructureByteStride = sizeof(HitCachingPayload);
                 uavdesc.Buffer.FirstElement = 0;
 
                 D3D12_CPU_DESCRIPTOR_HANDLE handle;
