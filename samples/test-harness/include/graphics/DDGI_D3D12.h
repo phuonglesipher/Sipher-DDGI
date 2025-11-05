@@ -68,6 +68,18 @@ namespace Graphics
                 UINT                         CacheCount = 100000;
                 ID3D12StateObject*           RadianceCachingPSO = nullptr;
                 ID3D12StateObjectProperties* RadianceCachingPSOInfo = nullptr;
+                // Ray Tracing
+                ID3D12Resource*              RadianceCacheShaderTable = nullptr;
+                ID3D12Resource*              RadianceCacheShaderTableUpload = nullptr;
+                // Shader Table
+                UINT                         RadianceCacheShaderTableSize = 0;
+                UINT                         RadianceCacheShaderTableRecordSize = 0;
+                UINT                         RadianceCacheShaderTableMissTableSize = 0;
+                UINT                         RadianceCacheShaderTableHitGroupTableSize = 0;
+
+                D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableRGSStartAddress = 0;
+                D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableMissTableStartAddress = 0;
+                D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableHitGroupTableStartAddress = 0;
 
                 // Variability Tracking
                 std::vector<uint32_t>        numVolumeVariabilitySamples;

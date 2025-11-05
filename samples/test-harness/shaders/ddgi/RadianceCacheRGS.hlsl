@@ -55,7 +55,7 @@ void RayGen()
 
     // Indirect Lighting (recursive)
     float3 irradiance = 0.f;
-    float3 surfaceBias = float3(0.0f, 0.0f, 0.0f);
+    float3 surfaceBias = payload.normal;
 
     // Get the volume resources needed for the irradiance query
     DDGIVolumeResources resources;
