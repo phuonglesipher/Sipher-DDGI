@@ -51,10 +51,9 @@ void RayGen()
     StructuredBuffer<Light> Lights = GetLights();
 
     // Direct Lighting and Shadowing
-    float3 diffuse = DirectDiffuseLighting(payload, GetGlobalConst(pt, rayNormalBias), GetGlobalConst(pt, rayViewBias), SceneTLAS, Lights);
+    float3 DirectLight = DirectDiffuseLighting(payload, GetGlobalConst(pt, rayNormalBias), GetGlobalConst(pt, rayViewBias), SceneTLAS, Lights);
 
     // Indirect Lighting (recursive)
-    float3 irradiance = 0.f;
     float3 surfaceBias = payload.normal;
 
     // Get the volume resources needed for the irradiance query
@@ -64,32 +63,64 @@ void RayGen()
     resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
     resources.bilinearSampler = GetBilinearWrapSampler();
 
-    // Compute volume blending weight
-    float volumeBlendWeight = DDGIGetVolumeBlendWeight(payload.worldPosition, volume);
-
-    // Don't evaluate irradiance when the surface is outside the volume
-    if (volumeBlendWeight > 0)
+    float3 IndirectLight = float3(0.0, 0.0, 0.0);
+    for (half Idx = 0; Idx < 64; Idx++)
     {
-        // Get irradiance from the DDGIVolume
-        irradiance = DDGIGetVolumeIrradiance(
-            payload.worldPosition,
-            surfaceBias,
-            payload.normal,
-            volume,
-            resources);
+        uint Seed = HitIndex + Idx;
+        float3 SamplingDirection = GetRandomDirectionOnHemisphere(payload.normal, Seed);
+        RayDesc ray;
+        ray.Origin = payload.worldPosition; // TODO: not using viewBias!
+        ray.Direction = SamplingDirection;
+        ray.TMin = 0.f;
+        ray.TMax = 1e27f;
 
-        // Attenuate irradiance by the blend weight
-        irradiance *= volumeBlendWeight;
+        // Trace a visibility ray
+        // Skip the CHS to avoid evaluating materials
+        PackedPayload packedPayload = (PackedPayload)0;
+        TraceRay(
+            SceneTLAS,
+            RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+            0xFF,
+            0,
+            0,
+            0,
+            ray,
+            packedPayload);
+
+        if (packedPayload.hitT > 0.0f)
+        {
+            // Unpack the payload
+            Payload TempPayload = UnpackPayload(packedPayload);
+        
+            // Compute volume blending weight
+            float volumeBlendWeight = DDGIGetVolumeBlendWeight(TempPayload.worldPosition, volume);
+        
+            // Don't evaluate irradiance when the surface is outside the volume
+            if (volumeBlendWeight > 0)
+            {
+                // Get irradiance from the DDGIVolume
+                float3 irradiance = DDGIGetVolumeIrradiance(
+                    TempPayload.worldPosition,
+                    surfaceBias,
+                    TempPayload.normal,
+                    volume,
+                    resources);
+        
+                // Attenuate irradiance by the blend weight
+                irradiance *= volumeBlendWeight;
+        
+                float maxAlbedo = 0.9f;
+                IndirectLight += ((min(TempPayload.albedo, float3(maxAlbedo, maxAlbedo, maxAlbedo)) / PI) * irradiance);
+            }
+        }
+        else
+        {
+            IndirectLight += GetGlobalConst(app, skyRadiance);
+        }
     }
+    IndirectLight /= 64.0f;
 
     RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
-
-    // Perfectly diffuse reflectors don't exist in the real world.
-    // Limit the BRDF albedo to a maximum value to account for the energy loss at each bounce.
-    float maxAlbedo = 0.9f;
-
-    // Store the final ray radiance and hit distance
-    float3 radiance = diffuse + ((min(payload.albedo, float3(maxAlbedo, maxAlbedo, maxAlbedo)) / PI) * irradiance);
-    RadianceCachingBuffer[HitIndex] = radiance;
+    RadianceCachingBuffer[HitIndex] = DirectLight + IndirectLight;
     HitCachingBuffer[HitIndex].isActived = false;
 }
