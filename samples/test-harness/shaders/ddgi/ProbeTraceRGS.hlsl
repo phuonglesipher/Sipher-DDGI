@@ -166,41 +166,6 @@ void RayGen()
 
     // Direct Lighting and Shadowing
     RWStructuredBuffer<float3> RadianceCache = GetRadianceCachingBuffer();
-    float3 diffuse = RadianceCache[HashID];
-
-    // Indirect Lighting (recursive)
-    float3 irradiance = 0.f;
-    float3 surfaceBias = DDGIGetSurfaceBias(payload.normal, ray.Direction, volume);
-    
-    // Get the volume resources needed for the irradiance query
-    DDGIVolumeResources resources;
-    resources.probeIrradiance = GetTex2DArray(resourceIndices.probeIrradianceSRVIndex);
-    resources.probeDistance = GetTex2DArray(resourceIndices.probeDistanceSRVIndex);
-    resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
-    resources.bilinearSampler = GetBilinearWrapSampler();
-    
-    // Compute volume blending weight
-    float volumeBlendWeight = DDGIGetVolumeBlendWeight(payload.worldPosition, volume);
-    
-    // Don't evaluate irradiance when the surface is outside the volume
-    if (volumeBlendWeight > 0)
-    {
-        // Get irradiance from the DDGIVolume
-        irradiance = DDGIGetVolumeIrradiance(
-            payload.worldPosition,
-            surfaceBias,
-            payload.normal,
-            volume,
-            resources);
-    
-        // Attenuate irradiance by the blend weight
-        irradiance *= volumeBlendWeight;
-    }
-    
-    // Perfectly diffuse reflectors don't exist in the real world.
-    // Limit the BRDF albedo to a maximum value to account for the energy loss at each bounce.
-    float maxAlbedo = 0.9f;
-    // Store the final ray radiance and hit distance
-    float3 radiance = diffuse + ((min(payload.albedo, float3(maxAlbedo, maxAlbedo, maxAlbedo)) / PI) * irradiance);
+    float3 radiance = RadianceCache[HashID];
     DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, volume, saturate(radiance), payload.hitT);
 }
