@@ -11,6 +11,7 @@
 #include "include/Common.hlsl"
 #include "include/Descriptors.hlsl"
 #include "include/Random.hlsl"
+#include "include/SpatialHash.hlsl"
 
 // ---[ Structures ]---
 
@@ -110,6 +111,16 @@ float4 PS(PSInput input) : SV_TARGET
         RWTexture2D<float4> DDGIOutput = GetRWTex2D(DDGI_OUTPUT_INDEX);
         float3 indirect = DDGIOutput.Load(input.position.xy).rgb;
         color = indirect;
+    }
+
+    if ((useFlags & COMPOSITE_FLAG_USE_DDGI) && (showFlags & COMPOSITE_FLAG_SHOW_DDGI_WORLD_RADIANCE_CACHE))
+    {
+        RWTexture2D<float4> GBufferB = GetRWTex2D(GBUFFERB_INDEX);
+        float3 WorldPos = GBufferB.Load(input.position.xy).xyz;
+        uint HashID = SpatialHashIndex(WorldPos, SPATIAL_HASH_VOXEL_SIZE);
+        RWStructuredBuffer<float3> RadianceCacheBuffer = GetRadianceCachingBuffer();
+        float3 WorldRadiance = RadianceCacheBuffer[HashID];
+        color = WorldRadiance;
     }
 
     // Early out, no post processing

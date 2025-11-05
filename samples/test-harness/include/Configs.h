@@ -90,6 +90,7 @@ namespace Configs
         bool showIndirect = false;
         bool insertPerfMarkers = true;
         bool shaderExecutionReordering = false;
+        bool showWorldRadianceCache = false;
         uint32_t selectedVolume = 0;
         std::vector<DDGIVolume> volumes;
     };

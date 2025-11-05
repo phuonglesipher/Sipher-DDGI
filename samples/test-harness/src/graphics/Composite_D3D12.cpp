@@ -137,6 +137,7 @@ namespace Graphics
                 d3dResources.constants.composite.showFlags = COMPOSITE_FLAG_SHOW_NONE;
                 if(config.rtao.visualize) d3dResources.constants.composite.showFlags |=  COMPOSITE_FLAG_SHOW_RTAO;
                 if(config.ddgi.showIndirect) d3dResources.constants.composite.showFlags |=  COMPOSITE_FLAG_SHOW_DDGI_INDIRECT;
+                if (config.ddgi.showWorldRadianceCache) d3dResources.constants.composite.showFlags |= COMPOSITE_FLAG_SHOW_DDGI_WORLD_RADIANCE_CACHE;
 
                 // Post Process constants
                 d3dResources.constants.post.useFlags = POSTPROCESS_FLAG_USE_NONE;

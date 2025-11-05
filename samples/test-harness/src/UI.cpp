@@ -754,6 +754,9 @@ namespace Graphics
                     ImGui::Checkbox("Show Indirect Lighting", &config.ddgi.showIndirect);
                     ImGui::SameLine(); AddQuestionMark("Show only the indirect lighting contribution. Press '2' on the keyboard for a shortcut.");
 
+                    ImGui::Checkbox("Show World Radiance Cache", &config.ddgi.showWorldRadianceCache);
+                    ImGui::SameLine(); AddQuestionMark("Show only the world radiance cache");
+
                     ImGui::Checkbox("Probe Visualization", &config.ddgi.showProbes);
                     ImGui::SameLine(); AddQuestionMark("Toggles a visualization of DDGI probes for all volumes that have the \"Show Probes\" option selected. Press 'P' on the keyboard for a shortcut.");
 
