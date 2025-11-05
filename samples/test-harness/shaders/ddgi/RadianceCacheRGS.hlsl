@@ -66,11 +66,11 @@ void RayGen()
     float3 IndirectLight = float3(0.0, 0.0, 0.0);
     for (half Idx = 0; Idx < 64; Idx++)
     {
-        uint Seed = HitIndex + Idx;
+        uint Seed = Idx * 10;
         float3 SamplingDirection = GetRandomDirectionOnHemisphere(payload.normal, Seed);
         RayDesc ray;
-        ray.Origin = payload.worldPosition; // TODO: not using viewBias!
-        ray.Direction = SamplingDirection;
+        ray.Origin = payload.worldPosition + (payload.normal * GetGlobalConst(pt, rayNormalBias)); // TODO: not using viewBias!
+        ray.Direction = normalize(SamplingDirection);
         ray.TMin = 0.f;
         ray.TMax = 1e27f;
 
@@ -86,15 +86,50 @@ void RayGen()
             0,
             ray,
             packedPayload);
+        
+        // if (packedPayload.hitT > 0.0f)
+        // {
+        //     // Unpack the payload
+        //     Payload TempPayload = UnpackPayload(packedPayload);
+        //
+        //     // Compute volume blending weight
+        //     float volumeBlendWeight = DDGIGetVolumeBlendWeight(TempPayload.worldPosition, volume);
+        //
+        //     // Don't evaluate irradiance when the surface is outside the volume
+        //     if (volumeBlendWeight > 0)
+        //     {
+        //         // Get irradiance from the DDGIVolume
+        //         float3 irradiance = DDGIGetVolumeIrradiance(
+        //             TempPayload.worldPosition,
+        //             surfaceBias,
+        //             TempPayload.normal,
+        //             volume,
+        //             resources);
+        //
+        //         // Attenuate irradiance by the blend weight
+        //         irradiance *= volumeBlendWeight;
+        //
+        //         float maxAlbedo = 0.9f;
+        //         IndirectLight += ((min(TempPayload.albedo, float3(maxAlbedo, maxAlbedo, maxAlbedo)) / PI) * irradiance);
+        //     }
+        // }
+        // else
+        // {
+        //     IndirectLight += GetGlobalConst(app, skyRadiance);
+        // }
 
-        if (packedPayload.hitT > 0.0f)
+        if (packedPayload.hitT < 0.f)
+        {
+            IndirectLight += GetGlobalConst(app, skyRadiance);
+        }
+        else
         {
             // Unpack the payload
             Payload TempPayload = UnpackPayload(packedPayload);
-        
+            
             // Compute volume blending weight
             float volumeBlendWeight = DDGIGetVolumeBlendWeight(TempPayload.worldPosition, volume);
-        
+            
             // Don't evaluate irradiance when the surface is outside the volume
             if (volumeBlendWeight > 0)
             {
@@ -105,17 +140,13 @@ void RayGen()
                     TempPayload.normal,
                     volume,
                     resources);
-        
+            
                 // Attenuate irradiance by the blend weight
                 irradiance *= volumeBlendWeight;
-        
+            
                 float maxAlbedo = 0.9f;
                 IndirectLight += ((min(TempPayload.albedo, float3(maxAlbedo, maxAlbedo, maxAlbedo)) / PI) * irradiance);
             }
-        }
-        else
-        {
-            IndirectLight += GetGlobalConst(app, skyRadiance);
         }
     }
     IndirectLight /= 64.0f;
