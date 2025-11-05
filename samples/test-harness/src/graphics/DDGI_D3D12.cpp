@@ -811,6 +811,7 @@ namespace Graphics
             bool LoadAndCompileShaders(Globals& d3d, Resources& resources, UINT numVolumes, std::ofstream& log)
             {
                 // Release existing shaders
+                resources.RadianceCacheRTShaders.Release();
                 resources.rtShaders.Release();
                 resources.indirectCS.Release();
 
@@ -880,6 +881,53 @@ namespace Graphics
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.indirectCS), "compile indirect lighting compute shader!\n", log);
                 }
 
+                //Load and compile radiance caching ray generation shader
+                {
+                    resources.RadianceCacheRTShaders.rgs.filepath = root + L"shaders/ddgi/RadianceCacheRGS.hlsl";
+                    resources.RadianceCacheRTShaders.rgs.entryPoint = L"RayGen";
+                    resources.RadianceCacheRTShaders.rgs.exportName = L"RadianceCacheRGS";
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"GFX_NVAPI", std::to_wstring(GFX_NVAPI));
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"CONSTS_REGISTER", L"b0");   // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"CONSTS_SPACE", L"space1");  // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+                    CHECK(Shaders::Compile(d3d.shaderCompiler, resources.RadianceCacheRTShaders.rgs), "compile radiance caching ray generation shader!\n", log);
+                }
+
+                // Load and compile the miss shader
+                {
+                    resources.RadianceCacheRTShaders.miss.filepath = root + L"shaders/Miss.hlsl";
+                    resources.RadianceCacheRTShaders.miss.entryPoint = L"Miss";
+                    resources.RadianceCacheRTShaders.miss.exportName = L"RadianceCacheMiss";
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.miss, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                    CHECK(Shaders::Compile(d3d.shaderCompiler, resources.RadianceCacheRTShaders.miss), "compile radiance caching tracing miss shader!\n", log);
+                }
+
+                // Add the hit group
+                // {
+                //     resources.RadianceCacheRTShaders.hitGroups.emplace_back();
+                //
+                //     Shaders::ShaderRTHitGroup& group = resources.RadianceCacheRTShaders.hitGroups[0];
+                //     group.exportName = L"RadianceCacheHitGroup";
+                //
+                //     // Load and compile the CHS
+                //     group.chs.filepath = root + L"shaders/CHS.hlsl";
+                //     group.chs.entryPoint = L"CHS_GI";
+                //     group.chs.exportName = L"RadianceCacheCHS";
+                //     Shaders::AddDefine(group.chs, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                //     CHECK(Shaders::Compile(d3d.shaderCompiler, group.chs), "compile radiance cache tracing closest hit shader!\n", log);
+                //
+                //     // Load and compile the AHS
+                //     group.ahs.filepath = root + L"shaders/AHS.hlsl";
+                //     group.ahs.entryPoint = L"AHS_GI";
+                //     group.ahs.exportName = L"RadianceCacheAHS";
+                //     Shaders::AddDefine(group.ahs, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                //     CHECK(Shaders::Compile(d3d.shaderCompiler, group.ahs), "compile radiance cache tracing any hit shader!\n", log);
+                //
+                //     // Set the payload size
+                //     resources.RadianceCacheRTShaders.payloadSizeInBytes = sizeof(PackedPayload);
+                // }
+
                 return true;
             }
 
@@ -889,6 +937,8 @@ namespace Graphics
                 SAFE_RELEASE(resources.rtpso);
                 SAFE_RELEASE(resources.rtpsoInfo);
                 SAFE_RELEASE(resources.indirectPSO);
+                SAFE_RELEASE(resources.RadianceCachingPSO);
+                SAFE_RELEASE(resources.RadianceCachingPSOInfo);
 
                 // Create the RTPSO
                 CHECK(CreateRayTracingPSO(
@@ -902,6 +952,19 @@ namespace Graphics
             #ifdef GFX_NAME_OBJECTS
                 resources.rtpso->SetName(L"DDGI RTPSO");
             #endif
+
+                // Create the radiance cache RTPSO
+                CHECK(CreateRayTracingPSO(
+                    d3d.device,
+                    d3dResources.rootSignature,
+                    resources.rtShaders,
+                    &resources.RadianceCachingPSO,
+                    &resources.rtpsoInfo),
+                    "create Radiance Cache RTPSO!\n", log);
+
+#ifdef GFX_NAME_OBJECTS
+                resources.RadianceCachingPSO->SetName(L"Radiance Cache RTPSO");
+#endif
 
                 CHECK(CreateComputePSO(
                     d3d.device,
@@ -1083,6 +1146,85 @@ namespace Graphics
                     barrier.UAV.pResource = volume->GetProbeRayData();
                     barriers.push_back(barrier);
                 }
+
+                // Wait for the ray traces to complete
+                if (!barriers.empty())
+                {
+                    d3d.cmdList[d3d.frameIndex]->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+                }
+
+            #ifdef GFX_PERF_MARKERS
+                PIXEndEvent(d3d.cmdList[d3d.frameIndex]);
+            #endif
+            }
+
+            void RayTraceRadianceCache(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
+            {
+            #ifdef GFX_PERF_MARKERS
+                PIXBeginEvent(d3d.cmdList[d3d.frameIndex], PIX_COLOR(GFX_PERF_MARKER_GREEN), "Ray Trace Radiance Cache");
+            #endif
+
+                // Set the descriptor heaps
+                ID3D12DescriptorHeap* ppHeaps[] = { d3dResources.srvDescHeap, d3dResources.samplerDescHeap };
+                d3d.cmdList[d3d.frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+                // Set the root signature
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootSignature(d3dResources.rootSignature);
+
+                // Update the root constants
+                UINT offset = 0;
+                GlobalConstants consts = d3dResources.constants;
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, AppConsts::GetNum32BitValues(), consts.app.GetData(), offset);
+                offset += AppConsts::GetAlignedNum32BitValues();
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, PathTraceConsts::GetNum32BitValues(), consts.pt.GetData(), offset);
+                offset += PathTraceConsts::GetAlignedNum32BitValues();
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, LightingConsts::GetNum32BitValues(), consts.lights.GetData(), offset);
+
+                // Set the root parameter descriptor tables
+            #if RTXGI_BINDLESS_TYPE == RTXGI_BINDLESS_TYPE_RESOURCE_ARRAYS
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootDescriptorTable(2, d3dResources.samplerDescHeap->GetGPUDescriptorHandleForHeapStart());
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootDescriptorTable(3, d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart());
+            #endif
+
+                // Set the radiance cache RTPSO
+                d3d.cmdList[d3d.frameIndex]->SetPipelineState1(resources.RadianceCachingPSO);
+
+                // Describe the shader table
+                D3D12_DISPATCH_RAYS_DESC desc = {};
+                desc.RayGenerationShaderRecord.StartAddress = resources.shaderTableRGSStartAddress;
+                desc.RayGenerationShaderRecord.SizeInBytes = resources.shaderTableRecordSize;
+
+                // desc.MissShaderTable.StartAddress = resources.shaderTableMissTableStartAddress;
+                // desc.MissShaderTable.SizeInBytes = resources.shaderTableMissTableSize;
+                // desc.MissShaderTable.StrideInBytes = resources.shaderTableRecordSize;
+                //
+                // desc.HitGroupTable.StartAddress = resources.shaderTableHitGroupTableStartAddress;
+                // desc.HitGroupTable.SizeInBytes = resources.shaderTableHitGroupTableSize;
+                // desc.HitGroupTable.StrideInBytes = resources.shaderTableRecordSize;
+
+                // Barriers
+                std::vector<D3D12_RESOURCE_BARRIER> barriers;
+                D3D12_RESOURCE_BARRIER barrier = {};
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+
+                // Get the volume
+                const DDGIVolume* volume = resources.selectedVolumes[0];
+
+                // Update the root constants
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(1, DDGIRootConstants::GetNum32BitValues(), volume->GetRootConstants().GetData(), 0);
+
+                // Dispatch the rays
+                desc.Width = resources.CacheCount;
+                desc.Height = 1;
+                desc.Depth = 1;
+                d3d.cmdList[d3d.frameIndex]->DispatchRays(&desc);
+
+                // Transition the volume's irradiance, distance, and probe data texture arrays from read-only (non-pixel shader) to read-write (UAV)
+                volume->TransitionResources(d3d.cmdList[d3d.frameIndex], EDDGIExecutionStage::POST_PROBE_TRACE);
+
+                // Barrier(s)
+                barrier.UAV.pResource = volume->GetProbeRayData();
+                barriers.push_back(barrier);
 
                 // Wait for the ray traces to complete
                 if (!barriers.empty())
@@ -1322,6 +1464,10 @@ namespace Graphics
                     RayTraceVolumes(d3d, d3dResources, resources);
                     GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
 
+                    GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
+                    RayTraceRadianceCache(d3d, d3dResources, resources);
+                    GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
+
                     // Update volume probes
                     GPU_TIMESTAMP_BEGIN(resources.blendStat->GetGPUQueryBeginIndex());
                     rtxgi::d3d12::UpdateDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes.data());
@@ -1368,10 +1514,13 @@ namespace Graphics
                 SAFE_RELEASE(resources.shaderTableUpload);
                 resources.rtShaders.Release();
                 resources.indirectCS.Release();
+                resources.RadianceCacheRTShaders.Release();
 
                 SAFE_RELEASE(resources.rtpso);
                 SAFE_RELEASE(resources.rtpsoInfo);
                 SAFE_RELEASE(resources.indirectPSO);
+                SAFE_RELEASE(resources.RadianceCachingPSO);
+                SAFE_RELEASE(resources.RadianceCachingPSOInfo);
 
                 resources.shaderTableSize = 0;
                 resources.shaderTableRecordSize = 0;

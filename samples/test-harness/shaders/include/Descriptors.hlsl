@@ -137,6 +137,7 @@ StructuredBuffer<DDGIVolumeResourceIndices> GetDDGIVolumeResourceIndices(uint in
 RWStructuredBuffer<TLASInstance> GetDDGIProbeVisTLASInstances() { return RWTLASInstances; }
 
 RWStructuredBuffer<HitCachingPayload> GetHitCachingBuffer() { return HitCaching; }
+RWStructuredBuffer<float3>            GetRadianceCachingBuffer() { return RadianceCaching; }
 
 RaytracingAccelerationStructure GetAccelerationStructure(uint index) { return TLAS[index]; }
 
