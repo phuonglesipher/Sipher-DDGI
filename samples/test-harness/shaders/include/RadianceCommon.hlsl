@@ -38,30 +38,34 @@ float3 EvaluateIndirectRadiance(float3 Albedo, float3 WorldPosition, float3 Worl
         float3 InRadiance = float3(0.0f, 0.0f, 0.0f);
         if (packedPayload.hitT < 0.f)
         {
-            //InRadiance = GetGlobalConst(app, skyRadiance);
+            InRadiance = GetGlobalConst(app, skyRadiance);
         }
         else
         {
             // Unpack the payload
             Payload Payloaded = UnpackPayload(packedPayload);
             
-            // Compute volume blending weight
-            float volumeBlendWeight = DDGIGetVolumeBlendWeight(Payloaded.worldPosition, Volume);
-            
-            // Don't evaluate irradiance when the surface is outside the volume
-            if (volumeBlendWeight > 0)
-            {
-                // Get irradiance from the DDGIVolume
-                float3 Irradiance = DDGIGetVolumeIrradiance(
-                    Payloaded.worldPosition,
-                    SurfaceBias,
-                    Payloaded.normal,
-                    Volume,
-                    Resources);
-            
-                // Attenuate irradiance by the blend weight
-                InRadiance = Irradiance * volumeBlendWeight;
-            }
+            // // Compute volume blending weight
+            // float volumeBlendWeight = DDGIGetVolumeBlendWeight(Payloaded.worldPosition, Volume);
+            //
+            // // Don't evaluate irradiance when the surface is outside the volume
+            // if (volumeBlendWeight > 0)
+            // {
+            //     // Get irradiance from the DDGIVolume
+            //     float3 Irradiance = DDGIGetVolumeIrradiance(
+            //         Payloaded.worldPosition,
+            //         SurfaceBias,
+            //         Payloaded.normal,
+            //         Volume,
+            //         Resources);
+            //
+            //     // Attenuate irradiance by the blend weight
+            //     InRadiance = Irradiance * volumeBlendWeight;
+            // }
+
+            uint HashID = SpatialHashIndex(Payloaded.worldPosition, SPATIAL_HASH_VOXEL_SIZE);
+            RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
+            InRadiance = RadianceCachingBuffer[HashID];
         }
 
         float3 BRDF = Albedo / PI;
