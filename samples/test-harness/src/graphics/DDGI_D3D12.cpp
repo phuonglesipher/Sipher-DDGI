@@ -1198,6 +1198,30 @@ namespace Graphics
                 return true;
             }
 
+            void ClearRadianceCache(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
+            {
+                D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle;
+                CPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
+
+                D3D12_GPU_DESCRIPTOR_HANDLE GPUHeapStart = d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart();
+                D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle;
+                GPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
+
+                D3D12_RESOURCE_BARRIER barrier = {};
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                barrier.Transition.pResource = resources.RadianceCachingResource;
+                barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+                //d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+                
+                float ClearValue[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewFloat(GPUHandle, CPUHandle, resources.RadianceCachingResource, ClearValue, 0, nullptr);
+                
+                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+            }
+
             void RayTraceVolumes(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
             {
             #ifdef GFX_PERF_MARKERS
@@ -1467,6 +1491,7 @@ namespace Graphics
                     // Clear the volume's probes at initialization
                     DDGIVolume* volume = static_cast<DDGIVolume*>(resources.volumes[volumeIndex]);
                     volume->ClearProbes(d3d.cmdList[d3d.frameIndex]);
+                    ClearRadianceCache(d3d, d3dResources, resources);
                 }
 
                 // Setup performance stats
@@ -1542,6 +1567,8 @@ namespace Graphics
 
                         config.ddgi.volumes[config.ddgi.selectedVolume].clearProbes = 0;
                         resources.numVolumeVariabilitySamples[config.ddgi.selectedVolume] = 0;
+
+                        ClearRadianceCache(d3d, d3dResources, resources);
                     }
 
                     // Select the active volumes
