@@ -71,9 +71,10 @@ VK_BINDING(4, 0) StructuredBuffer<TLASInstance>              TLASInstances      
 VK_BINDING(5, 0) StructuredBuffer<DDGIVolumeDescGPUPacked>   DDGIVolumes         : register(t5, space0);
 VK_BINDING(6, 0) StructuredBuffer<DDGIVolumeResourceIndices> DDGIVolumeBindless  : register(t6, space0);
 
-VK_BINDING(7, 0) RWStructuredBuffer<TLASInstance>            RWTLASInstances     : register(u5, space0);
-VK_BINDING(14, 0) RWStructuredBuffer<HitCachingPayload>      HitCaching          : register(u5, space1);
-VK_BINDING(14, 0) RWStructuredBuffer<float3>                 RadianceCaching     : register(u5, space2);
+VK_BINDING(7, 0) RWStructuredBuffer<TLASInstance>                   RWTLASInstances                  : register(u5, space0);
+VK_BINDING(14, 0) RWStructuredBuffer<HitCachingPayload>             HitCaching                       : register(u5, space1);
+VK_BINDING(14, 0) RWStructuredBuffer<float3>                        RadianceCaching                  : register(u5, space2);
+VK_BINDING(14, 0) RWStructuredBuffer<RadianceCacheVisualization>    RadianceCachingVisualization     : register(u5, space3);
 
 
 // Bindless Resources ---------------------------------------------------------------------------------------
@@ -138,6 +139,7 @@ RWStructuredBuffer<TLASInstance> GetDDGIProbeVisTLASInstances() { return RWTLASI
 
 RWStructuredBuffer<HitCachingPayload> GetHitCachingBuffer() { return HitCaching; }
 RWStructuredBuffer<float3>            GetRadianceCachingBuffer() { return RadianceCaching; }
+RWStructuredBuffer<RadianceCacheVisualization>            GetRadianceCachingVisualizationBuffer() { return RadianceCachingVisualization; }
 
 RaytracingAccelerationStructure GetAccelerationStructure(uint index) { return TLAS[index]; }
 

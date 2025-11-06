@@ -760,6 +760,12 @@ namespace Graphics
                 resources.RadianceCachingResource->SetName(L"Radiance Caching Structured Buffer");
             #endif
 
+                desc = { sizeof(RadianceCacheVisualization) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+                CHECK(CreateBuffer(d3d, desc, &resources.RadianceCachingVisualizationResource), "create indirect radiance caching structured buffer!\n", log);
+#ifdef GFX_NAME_OBJECTS
+                resources.RadianceCachingVisualizationResource->SetName(L"Radiance Caching Visualization Structured Buffer");
+#endif
+
             #if !RTXGI_DDGI_RESOURCE_MANAGEMENT
                 // Add the constants structured buffer SRV to the descriptor heap
                 D3D12_UNORDERED_ACCESS_VIEW_DESC uavdesc = {};
@@ -776,6 +782,10 @@ namespace Graphics
                 uavdesc.Buffer.StructureByteStride = sizeof(float3);
                 handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
                 d3d.device->CreateUnorderedAccessView(resources.RadianceCachingResource, nullptr, &uavdesc, handle);
+
+                uavdesc.Buffer.StructureByteStride = sizeof(RadianceCacheVisualization);
+                handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING_VISUALIZATION * d3dResources.srvDescHeapEntrySize);
+                d3d.device->CreateUnorderedAccessView(resources.RadianceCachingVisualizationResource, nullptr, &uavdesc, handle);
             #endif
 
                 return true;
@@ -1671,6 +1681,7 @@ namespace Graphics
 
                 SAFE_RELEASE(resources.HitCachingResource);
                 SAFE_RELEASE(resources.RadianceCachingResource);
+                SAFE_RELEASE(resources.RadianceCachingVisualizationResource);
 
                 // Release volumes
                 for (size_t volumeIndex = 0; volumeIndex < resources.volumes.size(); volumeIndex++)

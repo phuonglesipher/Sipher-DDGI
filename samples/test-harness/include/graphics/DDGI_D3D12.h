@@ -65,6 +65,7 @@ namespace Graphics
                 Shaders::ShaderRTPipeline    RadianceCacheRTShaders;
                 ID3D12Resource*              HitCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingResource = nullptr;
+                ID3D12Resource*              RadianceCachingVisualizationResource = nullptr;
                 UINT                         CacheCount = 100000;
                 ID3D12StateObject*           RadianceCachingPSO = nullptr;
                 ID3D12StateObjectProperties* RadianceCachingPSOInfo = nullptr;

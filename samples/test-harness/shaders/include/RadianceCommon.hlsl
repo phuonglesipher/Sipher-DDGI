@@ -27,7 +27,7 @@ float3 EvaluateIndirectRadiance(float3 WorldPosition, float3 WorldNormal, DDGIVo
         PackedPayload packedPayload = (PackedPayload)0;
         TraceRay(
             BVH,
-            RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+            RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
             0xFF,
             0,
             0,
@@ -37,7 +37,7 @@ float3 EvaluateIndirectRadiance(float3 WorldPosition, float3 WorldNormal, DDGIVo
         
         if (packedPayload.hitT < 0.f)
         {
-            IndirectLight += GetGlobalConst(app, skyRadiance);
+            //IndirectLight += GetGlobalConst(app, skyRadiance);
         }
         else
         {

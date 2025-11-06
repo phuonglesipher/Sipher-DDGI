@@ -113,14 +113,29 @@ float4 PS(PSInput input) : SV_TARGET
         color = indirect;
     }
 
-    if ((useFlags & COMPOSITE_FLAG_USE_DDGI) && (showFlags & COMPOSITE_FLAG_SHOW_DDGI_WORLD_RADIANCE_CACHE))
+    bool ShowRadianceCacheVisualization = (showFlags & COMPOSITE_FLAG_SHOW_DDGI_DIRECT_RADIANCE_CACHE) || (showFlags & COMPOSITE_FLAG_SHOW_DDGI_INDIRECT_RADIANCE_CACHE);
+    if ((useFlags & COMPOSITE_FLAG_USE_DDGI) && ShowRadianceCacheVisualization)
     {
         RWTexture2D<float4> GBufferB = GetRWTex2D(GBUFFERB_INDEX);
         float3 WorldPos = GBufferB.Load(input.position.xy).xyz;
         uint HashID = SpatialHashIndex(WorldPos, SPATIAL_HASH_VOXEL_SIZE);
-        RWStructuredBuffer<float3> RadianceCacheBuffer = GetRadianceCachingBuffer();
-        float3 WorldRadiance = RadianceCacheBuffer[HashID];
-        color = WorldRadiance;
+        RWStructuredBuffer<RadianceCacheVisualization> RadianceCacheVisualizationBuffer = GetRadianceCachingVisualizationBuffer();
+        float3 DirectRadiance = RadianceCacheVisualizationBuffer[HashID].DirectRadiance;
+        float3 IndirectRadiance = RadianceCacheVisualizationBuffer[HashID].IndirectRadiance;
+        float3 WorldRadiance = DirectRadiance + IndirectRadiance;
+
+        if (showFlags & COMPOSITE_FLAG_SHOW_DDGI_DIRECT_RADIANCE_CACHE)
+        {
+            color = DirectRadiance;
+        }
+        if (showFlags & COMPOSITE_FLAG_SHOW_DDGI_INDIRECT_RADIANCE_CACHE)
+        {
+            color = IndirectRadiance;
+        }
+        if ((showFlags & COMPOSITE_FLAG_SHOW_DDGI_DIRECT_RADIANCE_CACHE) && (showFlags & COMPOSITE_FLAG_SHOW_DDGI_INDIRECT_RADIANCE_CACHE))
+        {
+            color = WorldRadiance;
+        }
     }
 
     // Early out, no post processing

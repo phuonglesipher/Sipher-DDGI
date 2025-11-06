@@ -33,7 +33,8 @@ namespace Graphics
         COMPOSITE_FLAG_SHOW_DDGI_INDIRECT = 0x2,
         COMPOSITE_FLAG_SHOW_DDGI_VOLUME_PROBES = 0x4,
         COMPOSITE_FLAG_SHOW_DDGI_VOLUME_TEXTURES = 0x8,
-        COMPOSITE_FLAG_SHOW_DDGI_WORLD_RADIANCE_CACHE = 0xC
+        COMPOSITE_FLAG_SHOW_DDGI_DIRECT_RADIANCE_CACHE = 0x10,
+        COMPOSITE_FLAG_SHOW_DDGI_INDIRECT_RADIANCE_CACHE = 0x20,
     };
 
     enum POSTPROCESS_USE_FLAGS
@@ -78,6 +79,12 @@ namespace Graphics
     {
         PackedPayload payload;
         bool          isActived;
+    };
+
+    struct RadianceCacheVisualization
+    {
+        float3 DirectRadiance;
+        float3 IndirectRadiance;
     };
 
     struct ProbeVisualizationPayload

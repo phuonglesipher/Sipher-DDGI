@@ -29,6 +29,8 @@ void RayGen()
     StructuredBuffer<Light> Lights = GetLights();
     // Direct Lighting and Shadowing
     float3 DirectLight = DirectDiffuseLighting(payload, GetGlobalConst(pt, rayNormalBias), GetGlobalConst(pt, rayViewBias), SceneTLAS, Lights);
+    RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
+    RadianceCachingBuffer[HitIndex] = DirectLight;
 
     // Get the volume resources needed for the irradiance query
     // Get the DDGIVolume's index (from root/push constants)
@@ -50,9 +52,11 @@ void RayGen()
     resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
     resources.bilinearSampler = GetBilinearWrapSampler();
 
-    float3 IndirectLight = EvaluateIndirectRadiance(payload.worldPosition, payload.normal, volume, SceneTLAS, resources, 64);
-
-    RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
-    RadianceCachingBuffer[HitIndex] = DirectLight + IndirectLight;
+    float3 IndirectLight = EvaluateIndirectRadiance(payload.worldPosition, payload.shadingNormal, volume, SceneTLAS, resources, 64);
+    RadianceCachingBuffer[HitIndex] += IndirectLight;
+    
+    RWStructuredBuffer<RadianceCacheVisualization> IndirectRadianceCachingBuffer = GetRadianceCachingVisualizationBuffer();
+    IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = DirectLight;
+    IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = IndirectLight;
     HitCachingBuffer[HitIndex].isActived = false;
 }
