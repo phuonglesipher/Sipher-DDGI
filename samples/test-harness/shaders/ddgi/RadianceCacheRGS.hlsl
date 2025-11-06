@@ -52,7 +52,7 @@ void RayGen()
     resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
     resources.bilinearSampler = GetBilinearWrapSampler();
 
-    float3 IndirectLight = EvaluateIndirectRadiance(payload.worldPosition, payload.shadingNormal, volume, SceneTLAS, resources, 64);
+    float3 IndirectLight = EvaluateIndirectRadiance(payload.albedo, payload.worldPosition, payload.shadingNormal, volume, SceneTLAS, resources, 64);
     RadianceCachingBuffer[HitIndex] += IndirectLight;
     
     RWStructuredBuffer<RadianceCacheVisualization> IndirectRadianceCachingBuffer = GetRadianceCachingVisualizationBuffer();

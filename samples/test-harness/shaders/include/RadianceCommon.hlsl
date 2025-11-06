@@ -8,7 +8,7 @@
 #include "../include/SpatialHash.hlsl"
 #include "../../../../rtxgi-sdk/shaders/ddgi/Irradiance.hlsl"
 
-float3 EvaluateIndirectRadiance(float3 WorldPosition, float3 WorldNormal, DDGIVolumeDescGPU Volume, RaytracingAccelerationStructure BVH, DDGIVolumeResources Resources, uint SampleCount)
+float3 EvaluateIndirectRadiance(float3 Albedo, float3 WorldPosition, float3 WorldNormal, DDGIVolumeDescGPU Volume, RaytracingAccelerationStructure BVH, DDGIVolumeResources Resources, uint SampleCount)
 {
     float3 IndirectLight = float3(0.0, 0.0, 0.0);
     float3 SurfaceBias = WorldNormal + GetGlobalConst(pt, rayNormalBias);
@@ -34,10 +34,11 @@ float3 EvaluateIndirectRadiance(float3 WorldPosition, float3 WorldNormal, DDGIVo
             0,
             ray,
             packedPayload);
-        
+
+        float3 InRadiance = float3(0.0f, 0.0f, 0.0f);
         if (packedPayload.hitT < 0.f)
         {
-            //IndirectLight += GetGlobalConst(app, skyRadiance);
+            //InRadiance = GetGlobalConst(app, skyRadiance);
         }
         else
         {
@@ -51,7 +52,7 @@ float3 EvaluateIndirectRadiance(float3 WorldPosition, float3 WorldNormal, DDGIVo
             if (volumeBlendWeight > 0)
             {
                 // Get irradiance from the DDGIVolume
-                float3 irradiance = DDGIGetVolumeIrradiance(
+                float3 Irradiance = DDGIGetVolumeIrradiance(
                     Payloaded.worldPosition,
                     SurfaceBias,
                     Payloaded.normal,
@@ -59,11 +60,14 @@ float3 EvaluateIndirectRadiance(float3 WorldPosition, float3 WorldNormal, DDGIVo
                     Resources);
             
                 // Attenuate irradiance by the blend weight
-                irradiance *= volumeBlendWeight;
-                float maxAlbedo = 0.9f;
-                IndirectLight += ((min(Payloaded.albedo, float3(maxAlbedo, maxAlbedo, maxAlbedo)) / PI) * irradiance);
+                InRadiance = Irradiance * volumeBlendWeight;
             }
         }
+
+        float3 BRDF = Albedo / PI;
+        float CosN = dot(WorldNormal, SamplingDirection);
+        float Pdf = CosN / PI;
+        IndirectLight += (BRDF * InRadiance * CosN ) / Pdf;
     }
     IndirectLight /= SampleCount;
     return IndirectLight;
