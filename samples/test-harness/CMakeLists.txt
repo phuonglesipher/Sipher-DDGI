@@ -149,6 +149,7 @@ file(GLOB TEST_HARNESS_SHADER_INCLUDE
     "shaders/include/Random.hlsl"
     "shaders/include/RayTracing.hlsl"
     "shaders/include/SHCommon.hlsl"
+    "shaders/include/SHLighting.hlsl"
     "shaders/include/SpatialHash.hlsl"
     "shaders/include/RadianceCommon.hlsl"
 )
