@@ -1546,7 +1546,7 @@ namespace Graphics
             /**
              * Update data before execute.
              */
-            void Update(Globals& d3d, GlobalResources& d3dResources, Resources& resources, Configs::Config& config)
+            void Update(Globals& d3d, GlobalResources& d3dResources, Resources& resources, Configs::Config& config, Scenes::Scene& scene)
             {
                 CPU_TIMESTAMP_BEGIN(resources.cpuStat);
 
@@ -1577,8 +1577,11 @@ namespace Graphics
                     {
                         // TODO: processing to determine which volumes are in-frustum, active, and prioritized for update / render
 
+                        const auto& Camera = scene.cameras[scene.activeCamera];
+                        
                         // Get the volume
                         DDGIVolume* volume = static_cast<DDGIVolume*>(resources.volumes[volumeIndex]);
+                        volume->SetOrigin(Camera.data.position);
 
                         // If the scene's lights, skylight, or geometry have changed *or* the volume moves *or* the probes are reset, reset the variability
                         if (config.ddgi.volumes[volumeIndex].clearProbeVariability) resources.numVolumeVariabilitySamples[volumeIndex] = 0;
@@ -1786,9 +1789,9 @@ namespace Graphics
             return Graphics::D3D12::DDGI::Resize(d3d, d3dResources, resources, log);
         }
 
-        void Update(Globals& d3d, GlobalResources& d3dResources, Resources& resources, Configs::Config& config)
+        void Update(Globals& d3d, GlobalResources& d3dResources, Resources& resources, Configs::Config& config, Scenes::Scene& scene)
         {
-            return Graphics::D3D12::DDGI::Update(d3d, d3dResources, resources, config);
+            return Graphics::D3D12::DDGI::Update(d3d, d3dResources, resources, config, scene);
         }
 
         void Execute(Globals& d3d, GlobalResources& d3dResources, Resources& resources)

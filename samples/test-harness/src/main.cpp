@@ -313,7 +313,7 @@ int Run(const std::vector<std::string>& arguments)
             Graphics::GBuffer::Execute(gfx, gfxResources, gbuffer);
 
             // RTXGI: DDGI
-            Graphics::DDGI::Update(gfx, gfxResources, ddgi, config);
+            Graphics::DDGI::Update(gfx, gfxResources, ddgi, config, scene);
             Graphics::DDGI::Execute(gfx, gfxResources, ddgi);
 
             // RTXGI: DDGI Visualizations

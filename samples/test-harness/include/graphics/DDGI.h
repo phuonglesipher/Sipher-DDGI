@@ -30,7 +30,7 @@ namespace Graphics
         bool Initialize(Globals& globals, GlobalResources& gfxResources, Resources& resources, const Configs::Config& config, Instrumentation::Performance& perf, std::ofstream& log);
         bool Reload(Globals& globals, GlobalResources& gfxResources, Resources& resources, const Configs::Config& config, std::ofstream& log);
         bool Resize(Globals& globals, GlobalResources& gfxResources, Resources& resources, std::ofstream& log);
-        void Update(Globals& globals, GlobalResources& gfxResources, Resources& resources, Configs::Config& config);
+        void Update(Globals& globals, GlobalResources& gfxResources, Resources& resources, Configs::Config& config, Scenes::Scene& scene);
         void Execute(Globals& globals, GlobalResources& gfxResources, Resources& resources);
         void Cleanup(Globals& globals, Resources& resources);
 
