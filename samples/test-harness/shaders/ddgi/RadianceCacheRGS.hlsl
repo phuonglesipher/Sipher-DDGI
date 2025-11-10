@@ -31,28 +31,9 @@ void RayGen()
     float3 DirectLight = DirectDiffuseLighting(payload, GetGlobalConst(pt, rayNormalBias), GetGlobalConst(pt, rayViewBias), SceneTLAS, Lights);
     RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
     RadianceCachingBuffer[HitIndex] = DirectLight;
-
-    // Get the volume resources needed for the irradiance query
-    // Get the DDGIVolume's index (from root/push constants)
-    uint volumeIndex = GetDDGIVolumeIndex();
-
-    // Get the DDGIVolume structured buffers
-    StructuredBuffer<DDGIVolumeDescGPUPacked> DDGIVolumes = GetDDGIVolumeConstants(GetDDGIVolumeConstantsIndex());
-    StructuredBuffer<DDGIVolumeResourceIndices> DDGIVolumeBindless = GetDDGIVolumeResourceIndices(GetDDGIVolumeResourceIndicesIndex());
-
-    // Get the DDGIVolume's bindless resource indices
-    DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[volumeIndex];
-
-    // Get the DDGIVolume's constants from the structured buffer
-    DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[volumeIndex]);
     
-    DDGIVolumeResources resources;
-    resources.probeIrradiance = GetTex2DArray(resourceIndices.probeIrradianceSRVIndex);
-    resources.probeDistance = GetTex2DArray(resourceIndices.probeDistanceSRVIndex);
-    resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
-    resources.bilinearSampler = GetBilinearWrapSampler();
 
-    float3 IndirectLight = EvaluateIndirectRadiance(payload.albedo, payload.worldPosition, payload.shadingNormal, volume, SceneTLAS, resources, 16);
+    float3 IndirectLight = EvaluateIndirectRadiance(payload.albedo, payload.worldPosition, payload.shadingNormal, SceneTLAS, 16);
     RadianceCachingBuffer[HitIndex] += IndirectLight;
     
     RWStructuredBuffer<RadianceCacheVisualization> IndirectRadianceCachingBuffer = GetRadianceCachingVisualizationBuffer();

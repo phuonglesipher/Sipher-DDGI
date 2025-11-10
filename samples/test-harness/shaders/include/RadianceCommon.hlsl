@@ -8,7 +8,7 @@
 #include "../include/SpatialHash.hlsl"
 #include "../../../../rtxgi-sdk/shaders/ddgi/Irradiance.hlsl"
 
-float3 EvaluateIndirectRadiance(float3 Albedo, float3 WorldPosition, float3 WorldNormal, DDGIVolumeDescGPU Volume, RaytracingAccelerationStructure BVH, DDGIVolumeResources Resources, uint SampleCount)
+float3 EvaluateIndirectRadiance(float3 Albedo, float3 WorldPosition, float3 WorldNormal, RaytracingAccelerationStructure BVH, uint SampleCount)
 {
     float3 IndirectLight = float3(0.0, 0.0, 0.0);
     float3 SurfaceBias = WorldNormal + GetGlobalConst(pt, rayNormalBias);
