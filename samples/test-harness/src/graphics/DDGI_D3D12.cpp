@@ -1581,7 +1581,8 @@ namespace Graphics
                         
                         // Get the volume
                         DDGIVolume* volume = static_cast<DDGIVolume*>(resources.volumes[volumeIndex]);
-                        volume->SetOrigin(Camera.data.position);
+                        //volume->SetOrigin(Camera.data.position);
+                        volume->SetScrollAnchor(Camera.data.position);
 
                         // If the scene's lights, skylight, or geometry have changed *or* the volume moves *or* the probes are reset, reset the variability
                         if (config.ddgi.volumes[volumeIndex].clearProbeVariability) resources.numVolumeVariabilitySamples[volumeIndex] = 0;
