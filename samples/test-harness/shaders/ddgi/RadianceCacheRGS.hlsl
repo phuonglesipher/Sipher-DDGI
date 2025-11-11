@@ -40,4 +40,15 @@ void RayGen()
     IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = DirectLight;
     IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = IndirectLight;
     HitCachingBuffer[HitIndex].isActived = false;
+
+    uint VolumeIndex = hitPayLoad.volumeIndex;
+    uint RayIndex = hitPayLoad.rayIndex;
+    uint ProbeIndex = hitPayLoad.probeIndex;
+    DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[VolumeIndex];
+    RWTexture2DArray<float4> RayData = GetRWTex2DArray(resourceIndices.rayDataUAVIndex);
+    DDGIVolumeDescGPU Volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[VolumeIndex]);
+    uint3 outputCoords = DDGIGetRayDataTexelCoords(RayIndex, ProbeIndex, Volume);
+    RWStructuredBuffer<float3> RadianceCache = GetRadianceCachingBuffer();
+    float3 radiance = RadianceCache[HitIndex];
+    DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, Volume, saturate(radiance), payload.hitT);
 }

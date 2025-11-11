@@ -79,6 +79,9 @@ namespace Graphics
     {
         PackedPayload payload;
         bool          isActived;
+        uint          probeIndex;
+        uint          rayIndex;
+        uint          volumeIndex;
     };
 
     struct RadianceCacheVisualization

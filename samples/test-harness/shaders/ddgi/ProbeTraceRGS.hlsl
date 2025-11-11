@@ -162,10 +162,8 @@ void RayGen()
     HitCachingPayload NewPayload;
     NewPayload.payload = packedPayload;
     NewPayload.isActived = true;
+    NewPayload.probeIndex = probeIndex;
+    NewPayload.rayIndex = rayIndex;
+    NewPayload.volumeIndex = volumeIndex;
     HitCachingBuffer[HashID] = NewPayload;
-
-    // Direct Lighting and Shadowing
-    RWStructuredBuffer<float3> RadianceCache = GetRadianceCachingBuffer();
-    float3 radiance = RadianceCache[HashID];
-    DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, volume, saturate(radiance), payload.hitT);
 }
