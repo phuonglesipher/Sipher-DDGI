@@ -4,8 +4,8 @@
 #include "Random.hlsl"
 
 #define SPATIAL_HASH_VOXEL_SIZE 0.1
-#define SPATIAL_HASH_CASCADE_NUM 1
-#define SPATIAL_HASH_CASCADE_LENGTH_INV 1
+#define SPATIAL_HASH_CASCADE_NUM 2
+#define SPATIAL_HASH_CASCADE_LENGTH 14
 #define SPATIAL_HASH_CASCADE_CELL_NUM 100000
 
 uint XorShift32(uint x)
@@ -46,7 +46,15 @@ uint SpatialHash_Checksum(float3 P, float cellSize)
 float CalculateCascadeIndex(float3 P, float3 CameraPos)
 {
     float DistToCamera = length(P - CameraPos);
-    float Cascade = min(floor(DistToCamera * SPATIAL_HASH_CASCADE_LENGTH_INV), SPATIAL_HASH_CASCADE_NUM);
+    float Cascade = min(floor(DistToCamera / SPATIAL_HASH_CASCADE_LENGTH), SPATIAL_HASH_CASCADE_NUM - 1);
+    return Cascade;
+}
+
+int GetCascadeIndex(float3 P)
+{
+    float3 CameraPos = GetCamera().position;
+    CameraPos.y = P.y;
+    float Cascade = CalculateCascadeIndex(P, CameraPos);
     return Cascade;
 }
 

@@ -35,6 +35,7 @@
 
 #include "include/Common.hlsl"
 #include "include/Descriptors.hlsl"
+#include "include/SpatialHash.hlsl"
 
 #include "../../../rtxgi-sdk/shaders/ddgi/include/DDGIRootConstants.hlsl"
 #include "../../../rtxgi-sdk/shaders/ddgi/Irradiance.hlsl"
@@ -66,14 +67,16 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 normal = GBufferC.Load(DispatchThreadID.xy).xyz;
 
         // Compute indirect lighting
-        float3 irradiance = 0.f;
+        float3 irradiance0 = 0.f;
+        float3 irradiance1 = 0.f;
 
         // Get the structured buffers
         StructuredBuffer<DDGIVolumeDescGPUPacked> DDGIVolumes = GetDDGIVolumeConstants(GetDDGIVolumeConstantsIndex());
         StructuredBuffer<DDGIVolumeResourceIndices> DDGIVolumeBindless = GetDDGIVolumeResourceIndices(GetDDGIVolumeResourceIndicesIndex());
 
         // TODO: sort volumes by density, screen-space area, and/or other prioritization heuristics
-        for(int volumeIndex = 0; volumeIndex < RTXGI_DDGI_NUM_VOLUMES; volumeIndex++)
+        int volumeIndex = 0;
+        //for(int volumeIndex = 0; volumeIndex < RTXGI_DDGI_NUM_VOLUMES; volumeIndex++)
         {
             // Get the DDGIVolume's resource indices
             DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[volumeIndex];
@@ -96,19 +99,59 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
             if(blendWeight > 0)
             {
                 // Get irradiance for the world-space position in the volume
-                irradiance += DDGIGetVolumeIrradiance(
+                irradiance0 += DDGIGetVolumeIrradiance(
                     worldPosHitT.xyz,
                     surfaceBias,
                     normal,
                     volume,
                     resources);
-
-                irradiance *= blendWeight;
+            
+                irradiance0 *= blendWeight;
             }
         }
 
+        volumeIndex = 1;
+        //for(int volumeIndex = 0; volumeIndex < RTXGI_DDGI_NUM_VOLUMES; volumeIndex++)
+        {
+            // Get the DDGIVolume's resource indices
+            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[volumeIndex];
+
+            // Get the volume's constants
+            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[volumeIndex]);
+
+            float3 cameraDirection = normalize(worldPosHitT.xyz - GetCamera().position);
+            float3 surfaceBias = DDGIGetSurfaceBias(normal, cameraDirection, volume);
+
+            // Get the volume's resources
+            DDGIVolumeResources resources;
+            resources.probeIrradiance = GetTex2DArray(resourceIndices.probeIrradianceSRVIndex);
+            resources.probeDistance = GetTex2DArray(resourceIndices.probeDistanceSRVIndex);
+            resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
+            resources.bilinearSampler = GetBilinearWrapSampler();
+
+            // Get the blend weight for this volume's contribution to the surface
+            float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
+            if(blendWeight > 0)
+            {
+                // Get irradiance for the world-space position in the volume
+                irradiance1 += DDGIGetVolumeIrradiance(
+                    worldPosHitT.xyz,
+                    surfaceBias,
+                    normal,
+                    volume,
+                    resources);
+            
+                irradiance1 *= blendWeight;
+            }
+        }
+
+        float3 CameraPos = GetCamera().position;
+        float Dist = length(worldPosHitT.xyz - CameraPos);
+        float Weight = saturate(Dist - 10.0 / 16.0 - 10.0);
+        float3 BlendIrradiance = lerp(irradiance0, irradiance1, Weight);
+
         // Compute final color
-        color = (albedo.rgb / PI) * irradiance;
+        color = (albedo.rgb / PI) * BlendIrradiance;
     }
 
     DDGIOutput[DispatchThreadID.xy] = float4(color, 1.f);
