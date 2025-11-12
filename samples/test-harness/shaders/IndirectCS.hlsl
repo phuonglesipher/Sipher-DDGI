@@ -96,7 +96,7 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             // Get the blend weight for this volume's contribution to the surface
             float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
-            if(blendWeight > 0)
+            //if(blendWeight > 0)
             {
                 // Get irradiance for the world-space position in the volume
                 irradiance0 += DDGIGetVolumeIrradiance(
@@ -131,7 +131,7 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             // Get the blend weight for this volume's contribution to the surface
             float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
-            if(blendWeight > 0)
+            //if(blendWeight > 0)
             {
                 // Get irradiance for the world-space position in the volume
                 irradiance1 += DDGIGetVolumeIrradiance(
@@ -147,7 +147,7 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         float3 CameraPos = GetCamera().position;
         float Dist = length(worldPosHitT.xyz - CameraPos);
-        float Weight = saturate(Dist - 10.0 / 16.0 - 10.0);
+        float Weight = saturate((Dist - 1.0) / (10.0 - 1.0));
         float3 BlendIrradiance = lerp(irradiance0, irradiance1, Weight);
 
         // Compute final color
