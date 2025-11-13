@@ -33,7 +33,7 @@ void RayGen()
     RadianceCachingBuffer[HitIndex] = DirectLight;
     
 
-    float3 IndirectLight = EvaluateIndirectRadiance(payload.albedo, payload.worldPosition, payload.shadingNormal, SceneTLAS, 16, hitPayLoad.volumeIndex);
+    float3 IndirectLight = EvaluateIndirectRadiance(payload.albedo, payload.worldPosition, payload.shadingNormal, SceneTLAS, 16);
     RadianceCachingBuffer[HitIndex] += IndirectLight;
     
     RWStructuredBuffer<RadianceCacheVisualization> IndirectRadianceCachingBuffer = GetRadianceCachingVisualizationBuffer();
