@@ -61,4 +61,40 @@ float3 ACESFilm(float3 x)
     return saturate((x*(a*x + b)) / (x*(c*x + d) + e));
 }
 
+uint GetCascadeCount()
+{
+#ifdef RADIANCE_CACHE_CASCADE_COUNT
+    return RADIANCE_CACHE_CASCADE_COUNT;
+#else
+    return 1;
+#endif
+}
+
+float GetCascadeCellRadius()
+{
+#ifdef RADIANCE_CACHE_CASCADE_CELL_RADIUS
+    return RADIANCE_CACHE_CASCADE_CELL_RADIUS;
+#else
+    return 0.2f;
+#endif
+}
+
+float GetCascadeDistance()
+{
+#if defined(RADIANCE_CACHE_CASCADE_DISTANCE)
+    return RADIANCE_CACHE_CASCADE_DISTANCE;
+#else
+    return 10.f;
+#endif
+}
+
+uint GetMaxCacheCellCount()
+{
+#ifdef RADIANCE_CACHE_CELL_COUNT
+    return RADIANCE_CACHE_CELL_COUNT;
+#else
+    return 1000;
+#endif
+}
+
 #endif // COMMON_HLSL

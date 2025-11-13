@@ -837,6 +837,11 @@ namespace Graphics
                     Shaders::AddDefine(resources.rtShaders.rgs, L"CONSTS_SPACE", L"space1");  // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
                     Shaders::AddDefine(resources.rtShaders.rgs, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
                     Shaders::AddDefine(resources.rtShaders.rgs, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+
+                    Shaders::AddDefine(resources.rtShaders.rgs, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(numVolumes));
+                    Shaders::AddDefine(resources.rtShaders.rgs, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(resources.CascadeCellRadius));
+                    Shaders::AddDefine(resources.rtShaders.rgs, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(resources.CascadeDistance));
+                    Shaders::AddDefine(resources.rtShaders.rgs, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(resources.CacheCount));
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.rtShaders.rgs), "compile DDGI probe tracing ray generation shader!\n", log);
                 }
 
@@ -888,6 +893,10 @@ namespace Graphics
                     Shaders::AddDefine(resources.indirectCS, L"RTXGI_DDGI_NUM_VOLUMES", std::to_wstring(numVolumes));
                     Shaders::AddDefine(resources.indirectCS, L"THGP_DIM_X", L"8");
                     Shaders::AddDefine(resources.indirectCS, L"THGP_DIM_Y", L"4");
+                    Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(numVolumes));
+                    Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(resources.CascadeCellRadius));
+                    Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(resources.CascadeDistance));
+                    Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(resources.CacheCount));
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.indirectCS), "compile indirect lighting compute shader!\n", log);
                 }
 
@@ -911,6 +920,11 @@ namespace Graphics
                     Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"CONSTS_SPACE", L"space1");  // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
                     Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
                     Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+                    
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(numVolumes));
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(resources.CascadeCellRadius));
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(resources.CascadeDistance));
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(resources.CacheCount));
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.RadianceCacheRTShaders.rgs), "compile radiance cache ray generation shader!\n", log);
                 }
 

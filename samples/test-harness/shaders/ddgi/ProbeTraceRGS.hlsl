@@ -158,7 +158,7 @@ void RayGen()
     }
 
     RWStructuredBuffer<HitCachingPayload> HitCachingBuffer = GetHitCachingBuffer();
-    uint HashID = SpatialHashIndex(payload.worldPosition, SPATIAL_HASH_VOXEL_SIZE);
+    uint HashID = SpatialHashIndex(payload.worldPosition, GetCascadeCellRadius(), GetMaxCacheCellCount());
     HitCachingPayload NewPayload;
     NewPayload.payload = packedPayload;
     NewPayload.isActived = true;

@@ -44,7 +44,7 @@ float3 EvaluateIndirectRadiance(float3 Albedo, float3 WorldPosition, float3 Worl
         {
             // Unpack the payload
             Payload Payloaded = UnpackPayload(packedPayload);
-            uint HashID = SpatialHashIndex(Payloaded.worldPosition, SPATIAL_HASH_VOXEL_SIZE);
+            uint HashID = SpatialHashIndex(Payloaded.worldPosition, GetCascadeCellRadius(), GetMaxCacheCellCount());
             RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
             InIrradiance = RadianceCachingBuffer[HashID];
         }

@@ -66,7 +66,6 @@ namespace Graphics
                 ID3D12Resource*              HitCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingVisualizationResource = nullptr;
-                UINT                         CacheCount = 100000;
                 ID3D12StateObject*           RadianceCachingPSO = nullptr;
                 ID3D12StateObjectProperties* RadianceCachingPSOInfo = nullptr;
                 // Ray Tracing
@@ -77,6 +76,10 @@ namespace Graphics
                 UINT                         RadianceCacheShaderTableRecordSize = 0;
                 UINT                         RadianceCacheShaderTableMissTableSize = 0;
                 UINT                         RadianceCacheShaderTableHitGroupTableSize = 0;
+
+                UINT                         CacheCount = 100000;
+                float                        CascadeCellRadius = 0.2f;
+                float                        CascadeDistance = 20.0f;
 
                 D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableRGSStartAddress = 0;
                 D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableMissTableStartAddress = 0;

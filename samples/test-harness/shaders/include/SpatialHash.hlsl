@@ -3,11 +3,6 @@
 
 #include "Random.hlsl"
 
-#define SPATIAL_HASH_VOXEL_SIZE 0.2
-#define SPATIAL_HASH_CASCADE_NUM 2
-#define SPATIAL_HASH_CASCADE_LENGTH 20
-#define SPATIAL_HASH_CASCADE_CELL_NUM 100000
-
 uint XorShift32(uint x)
 {
     x ^= (x << 13);
@@ -43,36 +38,34 @@ uint SpatialHash_Checksum(float3 P, float cellSize)
     return cx + cy + cz;
 }
 
-float CalculateCascadeIndex(float3 P, float3 CameraPos)
+uint CalculateCascadeIndex(float3 P, float3 CameraPos, uint CascadeNum, float CascadeDistance)
 {
     float DistToCamera = length(P - CameraPos);
-    float Cascade = min(floor(DistToCamera / SPATIAL_HASH_CASCADE_LENGTH), SPATIAL_HASH_CASCADE_NUM - 1);
+    uint Cascade = min(floor(DistToCamera / CascadeDistance), CascadeNum - 1);
     return Cascade;
 }
 
-int GetCascadeIndex(float3 P)
+uint GetCascadeIndex(float3 P, uint CascadeNum, float CascadeDistance)
 {
     float3 CameraPos = GetCamera().position;
-    CameraPos.y = P.y;
-    float Cascade = CalculateCascadeIndex(P, CameraPos);
-    return Cascade;
+    return CalculateCascadeIndex(P, CameraPos, CascadeNum, CascadeDistance);;
 }
 
-float CalculateCascadeCellSize(float CascadeIndex)
+float CalculateCascadeCellSize(float CascadeIndex, float CellSize)
 {
-    return SPATIAL_HASH_VOXEL_SIZE * pow(2.0, CascadeIndex);
+    return CellSize * pow(2.0, CascadeIndex);
 }
 
-uint SpatialHashIndex(float3 P, float cellSize)
+uint SpatialHashIndex(float3 P, float CellSize, uint CellNum)
 {
-    return SpatialHash_H(P, cellSize) % SPATIAL_HASH_CASCADE_CELL_NUM;
+    return SpatialHash_H(P, CellSize) % CellNum;
 }
 
-uint SpatialHashCascadeIndex(float3 P, float3 CameraPos)
+uint SpatialHashCascadeIndex(float3 P, float3 CameraPos, float BaseCellSize, uint CellNum, uint CascadeNum, float CascadeDistance)
 {
-    float CascadeIndex = CalculateCascadeIndex(P, CameraPos);
-    float CellSize = CalculateCascadeCellSize(CascadeIndex);
-    return SpatialHashIndex(P, CellSize);
+    float CascadeIndex = CalculateCascadeIndex(P, CameraPos, CascadeNum, CascadeDistance);
+    float CellSize = CalculateCascadeCellSize(CascadeIndex, BaseCellSize);
+    return SpatialHashIndex(P, CellSize, CellNum);
 }
 
 float3 GetSpatialHashVisualColor(uint Hash)

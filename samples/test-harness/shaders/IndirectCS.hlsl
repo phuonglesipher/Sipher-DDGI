@@ -67,22 +67,20 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 normal = GBufferC.Load(DispatchThreadID.xy).xyz;
 
         // Compute indirect lighting
-        float3 irradiance0 = 0.f;
-        float3 irradiance1 = 0.f;
+        float3 CurrentIrradiance = float3(0.f, 0.f, 0.f);
+        float3 NextIrradiance = float3(0.1f, 0.1f, 0.1f);
 
         // Get the structured buffers
         StructuredBuffer<DDGIVolumeDescGPUPacked> DDGIVolumes = GetDDGIVolumeConstants(GetDDGIVolumeConstantsIndex());
         StructuredBuffer<DDGIVolumeResourceIndices> DDGIVolumeBindless = GetDDGIVolumeResourceIndices(GetDDGIVolumeResourceIndicesIndex());
 
-        // TODO: sort volumes by density, screen-space area, and/or other prioritization heuristics
-        int volumeIndex = 0;
-        //for(int volumeIndex = 0; volumeIndex < RTXGI_DDGI_NUM_VOLUMES; volumeIndex++)
+        uint CurrentVolumeIndex = GetCascadeIndex(worldPosHitT.xyz, GetCascadeCount(), GetCascadeDistance());
         {
             // Get the DDGIVolume's resource indices
-            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[volumeIndex];
+            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[CurrentVolumeIndex];
 
             // Get the volume's constants
-            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[volumeIndex]);
+            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[CurrentVolumeIndex]);
 
             float3 cameraDirection = normalize(worldPosHitT.xyz - GetCamera().position);
             float3 surfaceBias = DDGIGetSurfaceBias(normal, cameraDirection, volume);
@@ -96,28 +94,28 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             // Get the blend weight for this volume's contribution to the surface
             float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
-            //if(blendWeight > 0)
+            if(blendWeight > 0)
             {
                 // Get irradiance for the world-space position in the volume
-                irradiance0 += DDGIGetVolumeIrradiance(
+                CurrentIrradiance = DDGIGetVolumeIrradiance(
                     worldPosHitT.xyz,
                     surfaceBias,
                     normal,
                     volume,
                     resources);
             
-                irradiance0 *= blendWeight;
+                CurrentIrradiance *= blendWeight;
             }
         }
 
-        volumeIndex = 1;
-        //for(int volumeIndex = 0; volumeIndex < RTXGI_DDGI_NUM_VOLUMES; volumeIndex++)
+        uint NextVolumeIndex = CurrentVolumeIndex + 1;
+        if (NextVolumeIndex < RTXGI_DDGI_NUM_VOLUMES)
         {
             // Get the DDGIVolume's resource indices
-            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[volumeIndex];
+            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[NextVolumeIndex];
 
             // Get the volume's constants
-            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[volumeIndex]);
+            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[NextVolumeIndex]);
 
             float3 cameraDirection = normalize(worldPosHitT.xyz - GetCamera().position);
             float3 surfaceBias = DDGIGetSurfaceBias(normal, cameraDirection, volume);
@@ -131,28 +129,30 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             // Get the blend weight for this volume's contribution to the surface
             float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
-            //if(blendWeight > 0)
+            if(blendWeight > 0)
             {
                 // Get irradiance for the world-space position in the volume
-                irradiance1 += DDGIGetVolumeIrradiance(
+                NextIrradiance = DDGIGetVolumeIrradiance(
                     worldPosHitT.xyz,
                     surfaceBias,
                     normal,
                     volume,
                     resources);
             
-                irradiance1 *= blendWeight;
+                NextIrradiance *= blendWeight;
             }
         }
 
+        float CascadeDistance = GetCascadeDistance();
         float3 CameraPos = GetCamera().position;
         float Dist = length(worldPosHitT.xyz - CameraPos);
-        float Weight = saturate((Dist - 1.0) / (10.0 - 1.0));
-        float3 BlendIrradiance = lerp(irradiance0, irradiance1, Weight);
+        float EndDist = CascadeDistance * NextVolumeIndex;
+        float StartDist = EndDist - 1.0;
+        float Weight = saturate((Dist - StartDist / (EndDist - StartDist)));
+        float3 BlendIrradiance = lerp(CurrentIrradiance, NextIrradiance, Weight * Weight);
 
         // Compute final color
         color = (albedo.rgb / PI) * BlendIrradiance;
     }
-
-    DDGIOutput[DispatchThreadID.xy] = float4(color, 1.f);
+    DDGIOutput[DispatchThreadID.xy] = float4(color, 1.0f);
 }

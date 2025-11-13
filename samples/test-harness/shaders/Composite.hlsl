@@ -118,7 +118,7 @@ float4 PS(PSInput input) : SV_TARGET
     {
         RWTexture2D<float4> GBufferB = GetRWTex2D(GBUFFERB_INDEX);
         float3 WorldPos = GBufferB.Load(input.position.xy).xyz;
-        uint HashID = SpatialHashIndex(WorldPos, SPATIAL_HASH_VOXEL_SIZE);
+        uint HashID = SpatialHashIndex(WorldPos, GetCascadeCellRadius(), GetMaxCacheCellCount());
         RWStructuredBuffer<RadianceCacheVisualization> RadianceCacheVisualizationBuffer = GetRadianceCachingVisualizationBuffer();
         float3 DirectRadiance = RadianceCacheVisualizationBuffer[HashID].DirectRadiance;
         float3 IndirectRadiance = RadianceCacheVisualizationBuffer[HashID].IndirectRadiance;
