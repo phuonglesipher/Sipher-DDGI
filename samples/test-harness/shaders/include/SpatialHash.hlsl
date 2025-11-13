@@ -66,11 +66,11 @@ uint SpatialHashIndex(float3 P, float CellSize, uint CellNum)
     return SpatialHash_H(P, CellSize) % CellNum;
 }
 
-uint SpatialHashCascadeIndex(float3 P, float3 CameraPos, float BaseCellSize, uint CellNum, uint CascadeNum, float CascadeDistance)
+uint SpatialHashCascadeIndex(float3 P, float BaseCellSize, uint CellNum, uint CascadeNum, float CascadeDistance)
 {
-    float CascadeIndex = CalculateCascadeIndex(P, CameraPos, CascadeNum, CascadeDistance);
+    float CascadeIndex = GetCascadeIndex(P, CascadeNum, CascadeDistance);
     float CellSize = CalculateCascadeCellSize(CascadeIndex, BaseCellSize);
-    return SpatialHashIndex(P, CellSize, CellNum);
+    return SpatialHashIndex(P, CellSize, CellNum) + CascadeIndex * CellNum;
 }
 
 float3 GetSpatialHashVisualColor(uint Hash)

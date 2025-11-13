@@ -137,6 +137,11 @@ namespace Graphics
 
             bool                         allowTearing = false;
             bool                         supportsShaderExecutionReordering = false;
+
+            UINT                         CacheCount = 100000;
+            UINT                         NumVolume = 1;
+            float                        CascadeCellRadius = 0.2f;
+            float                        CascadeDistance = 20.0f;
         };
 
         struct RenderTargets

@@ -76,10 +76,7 @@ namespace Graphics
                 UINT                         RadianceCacheShaderTableRecordSize = 0;
                 UINT                         RadianceCacheShaderTableMissTableSize = 0;
                 UINT                         RadianceCacheShaderTableHitGroupTableSize = 0;
-
-                UINT                         CacheCount = 100000;
-                float                        CascadeCellRadius = 0.2f;
-                float                        CascadeDistance = 20.0f;
+                UINT                         CascadeCellNum;
 
                 D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableRGSStartAddress = 0;
                 D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableMissTableStartAddress = 0;

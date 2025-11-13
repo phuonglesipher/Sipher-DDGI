@@ -40,6 +40,10 @@ namespace Graphics
                 resources.shaders.ps.entryPoint = L"PS";
                 resources.shaders.ps.targetProfile = L"ps_6_6";
                 Shaders::AddDefine(resources.shaders.ps, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(d3d.NumVolume));
+                Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
+                Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(d3d.CascadeDistance));
+                Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
                 CHECK(Shaders::Compile(d3d.shaderCompiler, resources.shaders.ps), "compile composition pixel shader!\n", log);
 
                 return true;
