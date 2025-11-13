@@ -38,6 +38,11 @@ uint SpatialHash_Checksum(float3 P, float cellSize)
     return cx + cy + cz;
 }
 
+float CalculateCascadeMaxDistance(uint CascadeIdx, float CascadeBaseDistance)
+{
+    return CascadeBaseDistance * pow(2.0, CascadeIdx);
+}
+
 uint CalculateCascadeIndex(float3 P, float3 CameraPos, uint CascadeNum, float CascadeDistance)
 {
     float DistToCamera = length(P - CameraPos);

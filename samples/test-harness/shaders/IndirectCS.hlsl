@@ -67,55 +67,21 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 normal = GBufferC.Load(DispatchThreadID.xy).xyz;
 
         // Compute indirect lighting
-        float3 CurrentIrradiance = float3(0.f, 0.f, 0.f);
-        float3 NextIrradiance = float3(0.1f, 0.1f, 0.1f);
+        float3 Irradiance[2] = {float3(0.f, 0.f, 0.f), float3(0.f, 0.0f, 0.0f)};
 
         // Get the structured buffers
         StructuredBuffer<DDGIVolumeDescGPUPacked> DDGIVolumes = GetDDGIVolumeConstants(GetDDGIVolumeConstantsIndex());
         StructuredBuffer<DDGIVolumeResourceIndices> DDGIVolumeBindless = GetDDGIVolumeResourceIndices(GetDDGIVolumeResourceIndicesIndex());
 
-        uint CurrentVolumeIndex = GetCascadeIndex(worldPosHitT.xyz, GetCascadeCount(), GetCascadeDistance());
-        {
-            // Get the DDGIVolume's resource indices
-            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[CurrentVolumeIndex];
-
-            // Get the volume's constants
-            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[CurrentVolumeIndex]);
-
-            float3 cameraDirection = normalize(worldPosHitT.xyz - GetCamera().position);
-            float3 surfaceBias = DDGIGetSurfaceBias(normal, cameraDirection, volume);
-
-            // Get the volume's resources
-            DDGIVolumeResources resources;
-            resources.probeIrradiance = GetTex2DArray(resourceIndices.probeIrradianceSRVIndex);
-            resources.probeDistance = GetTex2DArray(resourceIndices.probeDistanceSRVIndex);
-            resources.probeData = GetTex2DArray(resourceIndices.probeDataSRVIndex);
-            resources.bilinearSampler = GetBilinearWrapSampler();
-
-            // Get the blend weight for this volume's contribution to the surface
-            float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
-            if(blendWeight > 0)
-            {
-                // Get irradiance for the world-space position in the volume
-                CurrentIrradiance = DDGIGetVolumeIrradiance(
-                    worldPosHitT.xyz,
-                    surfaceBias,
-                    normal,
-                    volume,
-                    resources);
-            
-                CurrentIrradiance *= blendWeight;
-            }
-        }
-
+        uint CurrentVolumeIndex = GetCascadeIndex(worldPosHitT.xyz, GetCascadeCount(), GetCascadeBaseDistance());
         uint NextVolumeIndex = CurrentVolumeIndex + 1;
-        if (NextVolumeIndex < RTXGI_DDGI_NUM_VOLUMES)
+        for (uint VolumeIdx = CurrentVolumeIndex; VolumeIdx <= min(NextVolumeIndex + 1, RTXGI_DDGI_NUM_VOLUMES - 1); VolumeIdx++)
         {
             // Get the DDGIVolume's resource indices
-            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[NextVolumeIndex];
+            DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[VolumeIdx];
 
             // Get the volume's constants
-            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[NextVolumeIndex]);
+            DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[VolumeIdx]);
 
             float3 cameraDirection = normalize(worldPosHitT.xyz - GetCamera().position);
             float3 surfaceBias = DDGIGetSurfaceBias(normal, cameraDirection, volume);
@@ -131,25 +97,26 @@ void CS(uint3 DispatchThreadID : SV_DispatchThreadID)
             float blendWeight = DDGIGetVolumeBlendWeight(worldPosHitT.xyz, volume);
             if(blendWeight > 0)
             {
+                uint IrradianceIdx = VolumeIdx - CurrentVolumeIndex;
                 // Get irradiance for the world-space position in the volume
-                NextIrradiance = DDGIGetVolumeIrradiance(
+                Irradiance[IrradianceIdx] = DDGIGetVolumeIrradiance(
                     worldPosHitT.xyz,
                     surfaceBias,
                     normal,
                     volume,
                     resources);
             
-                NextIrradiance *= blendWeight;
+                Irradiance[IrradianceIdx] *= blendWeight;
             }
         }
 
-        float CascadeDistance = GetCascadeDistance();
+        float CascadeBaseDistance = GetCascadeBaseDistance();
         float3 CameraPos = GetCamera().position;
         float Dist = length(worldPosHitT.xyz - CameraPos);
-        float EndDist = CascadeDistance * NextVolumeIndex;
-        float StartDist = EndDist - 1.0;
+        float EndDist = CalculateCascadeMaxDistance(CurrentVolumeIndex, CascadeBaseDistance);
+        float StartDist = EndDist - 1.0f;
         float Weight = saturate((Dist - StartDist / (EndDist - StartDist)));
-        float3 BlendIrradiance = lerp(CurrentIrradiance, NextIrradiance, Weight * Weight);
+        float3 BlendIrradiance = lerp(Irradiance[0], Irradiance[1], Weight);
 
         // Compute final color
         color = (albedo.rgb / PI) * BlendIrradiance;

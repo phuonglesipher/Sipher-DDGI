@@ -79,7 +79,7 @@ float GetCascadeCellRadius()
 #endif
 }
 
-float GetCascadeDistance()
+float GetCascadeBaseDistance()
 {
 #if defined(RADIANCE_CACHE_CASCADE_DISTANCE)
     return RADIANCE_CACHE_CASCADE_DISTANCE;
