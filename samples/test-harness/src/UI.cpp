@@ -763,6 +763,7 @@ namespace Graphics
                         ImGui::Checkbox("Indirect Radiance", &config.ddgi.showIndirectRadianceCache);
                         ImGui::Unindent(20.f);
                     }
+                    AddSlider(gfx.RadianceCacheSampleCount, 1.0f, 1000.f, 1.0f, "##radianceCacheSampleCount", "Radiance Cache Sample Count", "Adjust the Radiance Cache Sample Count");
 
                     ImGui::Checkbox("Probe Visualization", &config.ddgi.showProbes);
                     ImGui::SameLine(); AddQuestionMark("Toggles a visualization of DDGI probes for all volumes that have the \"Show Probes\" option selected. Press 'P' on the keyboard for a shortcut.");

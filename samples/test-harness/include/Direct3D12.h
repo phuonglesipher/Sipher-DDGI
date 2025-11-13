@@ -142,6 +142,7 @@ namespace Graphics
             UINT                         NumVolume = 1;
             float                        CascadeCellRadius = 0.2f;
             float                        CascadeDistance = 20.0f;
+            float                        RadianceCacheSampleCount = 16.0f;
         };
 
         struct RenderTargets

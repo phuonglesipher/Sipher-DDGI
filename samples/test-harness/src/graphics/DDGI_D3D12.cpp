@@ -925,6 +925,7 @@ namespace Graphics
                     Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
                     Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(d3d.CascadeDistance));
                     Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
+                    Shaders::AddDefine(resources.RadianceCacheRTShaders.rgs, L"RADIANCE_CACHE_SAMPLE_COUNT", std::to_wstring(d3d.RadianceCacheSampleCount));
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.RadianceCacheRTShaders.rgs), "compile radiance cache ray generation shader!\n", log);
                 }
 
