@@ -430,30 +430,30 @@ namespace rtxgi
          * Probe blending and border update workloads are batched together for better performance.
          * Volume resources are expected to be in the D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
          */
-        RTXGI_API ERTXGIStatus UpdateDDGIVolumeProbes(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume** volumes);
+        RTXGI_API ERTXGIStatus UpdateDDGIVolumeProbes(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume* volumes);
 
         /**
          * Adjusts one or more volume's world-space probe positions to avoid them being too close to or inside of geometry.
          * If a volume has the reset flag set, all probe relocation offsets are set to zero before relocation occurs.
          * Volume resources are expected to be in the D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
          */
-        RTXGI_API ERTXGIStatus RelocateDDGIVolumeProbes(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume** volumes);
+        RTXGI_API ERTXGIStatus RelocateDDGIVolumeProbes(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume* volumes);
 
         /**
          * Classifies one or more volume's probes as active or inactive based on the hit distance data in the ray data texture.
          * If a volume has the reset flag set, all probes are set to active before classification occurs.
          * Volume resources are expected to be in the D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
          */
-        RTXGI_API ERTXGIStatus ClassifyDDGIVolumeProbes(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume** volumes);
+        RTXGI_API ERTXGIStatus ClassifyDDGIVolumeProbes(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume* volumes);
 
         /**
          * Calculates average variability for all probes in each provided volume
          */
-        RTXGI_API ERTXGIStatus CalculateDDGIVolumeVariability(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume** volumes);
+        RTXGI_API ERTXGIStatus CalculateDDGIVolumeVariability(ID3D12GraphicsCommandList* cmdList, UINT numVolumes, DDGIVolume* volumes);
 
         /**
          * Reads back average variability for each provided volume, at the time of the call
          */
-        RTXGI_API ERTXGIStatus ReadbackDDGIVolumeVariability(UINT numVolumes, DDGIVolume** volumes);
+        RTXGI_API ERTXGIStatus ReadbackDDGIVolumeVariability(UINT numVolumes, DDGIVolume* volumes);
     } // namespace d3d12
 } // namespace rtxgi

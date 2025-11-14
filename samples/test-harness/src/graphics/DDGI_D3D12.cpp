@@ -1238,7 +1238,7 @@ namespace Graphics
                 d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
             }
 
-            void RayTraceVolumes(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
+            void RayTraceVolumes(Globals& d3d, GlobalResources& d3dResources, Resources& resources, DDGIVolume* volumes)
             {
             #ifdef GFX_PERF_MARKERS
                 PIXBeginEvent(d3d.cmdList[d3d.frameIndex], PIX_COLOR(GFX_PERF_MARKER_GREEN), "Ray Trace DDGIVolumes");
@@ -1288,10 +1288,10 @@ namespace Graphics
                 barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 
                 // Trace probe rays for each volume
-                for(UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
+                //for(UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
                 {
                     // Get the volume
-                    const DDGIVolume* volume = resources.selectedVolumes[volumeIndex];
+                    const DDGIVolume* volume = volumes;
 
                     // Update the root constants
                     d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(1, DDGIRootConstants::GetNum32BitValues(), volume->GetRootConstants().GetData(), 0);
@@ -1645,9 +1645,11 @@ namespace Graphics
                     rtxgi::d3d12::UploadDDGIVolumeResourceIndices(d3d.cmdList[d3d.frameIndex], d3d.frameIndex, numVolumes, resources.selectedVolumes.data());
                     rtxgi::d3d12::UploadDDGIVolumeConstants(d3d.cmdList[d3d.frameIndex], d3d.frameIndex, numVolumes, resources.selectedVolumes.data());
 
+                    static int volumeIndex = 0;
+                    
                     // Trace rays from DDGI probes to sample the environment
                     GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
-                    RayTraceVolumes(d3d, d3dResources, resources);
+                    RayTraceVolumes(d3d, d3dResources, resources, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
 
                     GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
@@ -1656,30 +1658,33 @@ namespace Graphics
 
                     // Update volume probes
                     GPU_TIMESTAMP_BEGIN(resources.blendStat->GetGPUQueryBeginIndex());
-                    rtxgi::d3d12::UpdateDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes.data());
+                    rtxgi::d3d12::UpdateDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.blendStat->GetGPUQueryEndIndex());
 
                     // Relocate probes if the feature is enabled
                     GPU_TIMESTAMP_BEGIN(resources.relocateStat->GetGPUQueryBeginIndex());
-                    rtxgi::d3d12::RelocateDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes.data());
+                    rtxgi::d3d12::RelocateDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.relocateStat->GetGPUQueryEndIndex());
 
                     // Classify probes if the feature is enabled
                     GPU_TIMESTAMP_BEGIN(resources.classifyStat->GetGPUQueryBeginIndex());
-                    rtxgi::d3d12::ClassifyDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes.data());
+                    rtxgi::d3d12::ClassifyDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.classifyStat->GetGPUQueryEndIndex());
 
                     // Calculate variability
                     GPU_TIMESTAMP_BEGIN(resources.variabilityStat->GetGPUQueryBeginIndex());
-                    rtxgi::d3d12::CalculateDDGIVolumeVariability(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes.data());
+                    rtxgi::d3d12::CalculateDDGIVolumeVariability(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes[volumeIndex]);
                     // The readback happens immediately, not recorded on the command list, so will return a value from a previous update
-                    rtxgi::d3d12::ReadbackDDGIVolumeVariability(numVolumes, resources.selectedVolumes.data());
+                    rtxgi::d3d12::ReadbackDDGIVolumeVariability(numVolumes, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.variabilityStat->GetGPUQueryEndIndex());
 
                     // Gather indirect lighting in screen-space
                     GPU_TIMESTAMP_BEGIN(resources.lightingStat->GetGPUQueryBeginIndex());
                     GatherIndirectLighting(d3d, d3dResources, resources);
                     GPU_TIMESTAMP_END(resources.lightingStat->GetGPUQueryEndIndex());
+
+                    volumeIndex++;
+                    volumeIndex %= numVolumes;
                 }
                 GPU_TIMESTAMP_END(resources.gpuStat->GetGPUQueryEndIndex());
                 CPU_TIMESTAMP_ENDANDRESOLVE(resources.cpuStat);
