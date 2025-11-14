@@ -306,12 +306,10 @@ namespace rtxgi
         {
             if (bInsertPerfMarkers) PIXBeginEvent(cmdList, PIX_COLOR(RTXGI_PERF_MARKER_GREEN), "RTXGI DDGI Update Probes");
 
-            UINT volumeIndex;
             std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
             // Irradiance Blending
             if (bInsertPerfMarkers) PIXBeginEvent(cmdList, PIX_COLOR(RTXGI_PERF_MARKER_GREEN), "Probe Irradiance");
-            //for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
             {
                 // Get the volume
                 const DDGIVolume* volume = volumes;
@@ -374,7 +372,6 @@ namespace rtxgi
 
             // Distance
             if (bInsertPerfMarkers) PIXBeginEvent(cmdList, PIX_COLOR(RTXGI_PERF_MARKER_GREEN), "Probe Distance");
-            //for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
             {
                 // Get the volume
                 const DDGIVolume* volume = volumes;
@@ -446,19 +443,14 @@ namespace rtxgi
         {
             if (bInsertPerfMarkers) PIXBeginEvent(cmdList, PIX_COLOR(RTXGI_PERF_MARKER_GREEN), "RTXGI DDGI Relocate Probes");
 
-            UINT volumeIndex;
             std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
             D3D12_RESOURCE_BARRIER barrier = {};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 
-            // Probe Relocation Reset
-            //for(volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+            const DDGIVolume* volume = volumes;
+            if (volume->GetProbeRelocationNeedsReset())
             {
-                // Get the volume
-                const DDGIVolume* volume = volumes;
-                if (!volume->GetProbeRelocationNeedsReset()) return ERTXGIStatus::OK;  // Skip if the volume doesn't need to be reset
-
                 // Set the descriptor heap(s)
                 std::vector<ID3D12DescriptorHeap*> heaps;
                 heaps.push_back(volume->GetResourceDescriptorHeap());
@@ -508,11 +500,8 @@ namespace rtxgi
             }
 
             // Probe Relocation
-            //for(volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+            if(volume->GetProbeRelocationEnabled())
             {
-                // Get the volume
-                const DDGIVolume* volume = volumes;
-                if(!volume->GetProbeRelocationEnabled()) return ERTXGIStatus::OK;  // Skip if relocation is not enabled for this volume
 
                 // Set the descriptor heap(s)
                 std::vector<ID3D12DescriptorHeap*> heaps;
@@ -571,11 +560,9 @@ namespace rtxgi
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 
             // Probe Classification Reset
-            for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+            const DDGIVolume* volume = volumes;
+            if (volume->GetProbeClassificationNeedsReset())
             {
-                const DDGIVolume* volume = volumes;
-                if (!volume->GetProbeClassificationNeedsReset()) continue;  // Skip if the volume doesn't need to be reset
-
                 // Set the descriptor heap(s)
                 std::vector<ID3D12DescriptorHeap*> heaps;
                 heaps.push_back(volume->GetResourceDescriptorHeap());
@@ -625,12 +612,8 @@ namespace rtxgi
             }
 
             // Probe Classification
-            //for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+            if (volume->GetProbeClassificationEnabled())
             {
-                // Get the volume
-                const DDGIVolume* volume = volumes;
-                if (!volume->GetProbeClassificationEnabled()) return ERTXGIStatus::OK;  // Skip if classification is not enabled for this volume
-
                 // Set the descriptor heap(s)
                 std::vector<ID3D12DescriptorHeap*> heaps;
                 heaps.push_back(volume->GetResourceDescriptorHeap());
@@ -681,14 +664,9 @@ namespace rtxgi
         {
             if (bInsertPerfMarkers) PIXBeginEvent(cmdList, PIX_COLOR(RTXGI_PERF_MARKER_GREEN), "Probe Variability Calculation");
 
-            UINT volumeIndex;
-
-            // Reduction
-            //for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+            const DDGIVolume* volume = volumes;
+            if (volume->GetProbeVariabilityEnabled())
             {
-                const DDGIVolume* volume = volumes;
-                if (!volume->GetProbeVariabilityEnabled()) return ERTXGIStatus::OK;  // Skip if the volume is not calculating variability
-
                 // Set the descriptor heap(s)
                 std::vector<ID3D12DescriptorHeap*> heaps;
                 heaps.push_back(volume->GetResourceDescriptorHeap());
@@ -819,11 +797,8 @@ namespace rtxgi
                 afterBarrier.Transition.StateBefore = beforeBarrier.Transition.StateAfter;
                 afterBarrier.Transition.StateAfter = beforeBarrier.Transition.StateBefore;
 
-                //for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+                if (volume->GetProbeVariabilityEnabled())
                 {
-                    const DDGIVolume* volume = volumes;
-                    if (!volume->GetProbeVariabilityEnabled()) return ERTXGIStatus::OK;  // Skip if the volume is not calculating variability
-
                     beforeBarrier.Transition.pResource = volume->GetProbeVariabilityAverage();
                     barriers.push_back(beforeBarrier);
                 }
@@ -834,10 +809,8 @@ namespace rtxgi
                     barriers.clear();
                 }
 
-                //for (volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+                if (volume->GetProbeVariabilityEnabled())
                 {
-                    const DDGIVolume* volume = volumes;
-                    if (!volume->GetProbeVariabilityEnabled()) return ERTXGIStatus::OK;  // Skip if the volume is not calculating variability
 
                     D3D12_TEXTURE_COPY_LOCATION copyLocSrc = {};
                     copyLocSrc.pResource = volume->GetProbeVariabilityAverage();
@@ -871,12 +844,9 @@ namespace rtxgi
 
         ERTXGIStatus ReadbackDDGIVolumeVariability(UINT numVolumes, DDGIVolume* volumes)
         {
-            //for (UINT volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
+            DDGIVolume* volume = volumes;
+            if (volume->GetProbeVariabilityEnabled())
             {
-                // Get the volume
-                DDGIVolume* volume = volumes;
-                if (!volume->GetProbeVariabilityEnabled()) return ERTXGIStatus::OK;  // Skip if the volume is not calculating variability
-
                 // Get the probe variability readback buffer
                 ID3D12Resource* readback = volume->GetProbeVariabilityReadback();
 

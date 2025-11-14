@@ -1288,7 +1288,6 @@ namespace Graphics
                 barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 
                 // Trace probe rays for each volume
-                //for(UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
                 {
                     // Get the volume
                     const DDGIVolume* volume = volumes;
