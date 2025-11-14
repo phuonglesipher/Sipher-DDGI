@@ -897,6 +897,7 @@ namespace Graphics
                     Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
                     Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(d3d.CascadeDistance));
                     Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
+                    Shaders::AddDefine(resources.indirectCS, L"FINAL_GATHER_DOWNSCALE", std::to_wstring(d3d.FinalGatherDownScale));
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.indirectCS), "compile indirect lighting compute shader!\n", log);
                 }
 
@@ -1435,8 +1436,8 @@ namespace Graphics
                 d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.indirectPSO);
 
                 // Dispatch threads
-                UINT groupsX = DivRoundUp(d3d.width, 8);
-                UINT groupsY = DivRoundUp(d3d.height, 4);
+                UINT groupsX = DivRoundUp(d3d.width / d3d.FinalGatherDownScale, 8);
+                UINT groupsY = DivRoundUp(d3d.height / d3d.FinalGatherDownScale, 4);
                 d3d.cmdList[d3d.frameIndex]->Dispatch(groupsX, groupsY, 1);
 
                 // Note: if using the pixel shader (instead of compute) to gather indirect light, transition

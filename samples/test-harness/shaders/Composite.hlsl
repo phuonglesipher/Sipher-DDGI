@@ -79,7 +79,7 @@ float4 PS(PSInput input) : SV_TARGET
         {
             // Add direct and indirect lighting
             RWTexture2D<float4> DDGIOutput = GetRWTex2D(DDGI_OUTPUT_INDEX);
-            float3 indirect = DDGIOutput.Load(input.position.xy).rgb;
+            float3 indirect = DDGIOutput.Load(input.position.xy / FINAL_GATHER_DOWNSCALE).rgb;
             color += indirect;
         }
 
@@ -109,7 +109,7 @@ float4 PS(PSInput input) : SV_TARGET
     {
         // Show only the indirect lighting from DDGI
         RWTexture2D<float4> DDGIOutput = GetRWTex2D(DDGI_OUTPUT_INDEX);
-        float3 indirect = DDGIOutput.Load(input.position.xy).rgb;
+        float3 indirect = DDGIOutput.Load(input.position.xy / FINAL_GATHER_DOWNSCALE).rgb;
         color = indirect;
     }
 

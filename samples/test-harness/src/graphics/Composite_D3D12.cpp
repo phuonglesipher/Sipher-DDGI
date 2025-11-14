@@ -33,6 +33,7 @@ namespace Graphics
                 resources.shaders.vs.entryPoint = L"VS";
                 resources.shaders.vs.targetProfile = L"vs_6_6";
                 Shaders::AddDefine(resources.shaders.vs, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                Shaders::AddDefine(resources.shaders.vs, L"FINAL_GATHER_DOWNSCALE", std::to_wstring(d3d.FinalGatherDownScale));
                 CHECK(Shaders::Compile(d3d.shaderCompiler, resources.shaders.vs), "compile composition vertex shader!\n", log);
 
                 // Load and compile the pixel shader
@@ -44,6 +45,7 @@ namespace Graphics
                 Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
                 Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(d3d.CascadeDistance));
                 Shaders::AddDefine(resources.shaders.ps, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
+                Shaders::AddDefine(resources.shaders.ps, L"FINAL_GATHER_DOWNSCALE", std::to_wstring(d3d.FinalGatherDownScale));
                 CHECK(Shaders::Compile(d3d.shaderCompiler, resources.shaders.ps), "compile composition pixel shader!\n", log);
 
                 return true;
