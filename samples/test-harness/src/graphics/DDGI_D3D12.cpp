@@ -1350,6 +1350,62 @@ namespace Graphics
             #endif
             }
 
+            void RayTraceVolumeCS(Globals& d3d, GlobalResources& d3dResources, Resources& resources, DDGIVolume* volumes)
+            {
+                #ifdef GFX_PERF_MARKERS
+                PIXBeginEvent(d3d.cmdList[d3d.frameIndex], PIX_COLOR(GFX_PERF_MARKER_GREEN), "Ray Trace Volume CS");
+            #endif
+
+                // Transition the selected volume's irradiance, distance, and data texture arrays from read-write (UAV) to read-only (non-pixel shader)
+                // Note: use PRE_GATHER_PS if using the pixel shader (instead of compute) to gather indirect light
+                for (UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
+                {
+                    const DDGIVolume* volume = resources.selectedVolumes[volumeIndex];
+                    volume->TransitionResources(d3d.cmdList[d3d.frameIndex], EDDGIExecutionStage::PRE_GATHER_CS);
+                }
+
+                // Set the descriptor heaps
+                ID3D12DescriptorHeap* ppHeaps[] = { d3dResources.srvDescHeap, d3dResources.samplerDescHeap };
+                d3d.cmdList[d3d.frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+                // Set the root signature
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootSignature(d3dResources.rootSignature);
+
+                // Set the root parameter descriptor tables
+            #if RTXGI_BINDLESS_TYPE == RTXGI_BINDLESS_TYPE_RESOURCE_ARRAYS
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootDescriptorTable(2, d3dResources.samplerDescHeap->GetGPUDescriptorHandleForHeapStart());
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootDescriptorTable(3, d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart());
+            #endif
+
+                // Set the PSO
+                d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.indirectPSO);
+
+                // Dispatch threads
+                UINT Width, Height, Depth;
+                volumes->GetRayDispatchDimensions(Width, Height, Depth);
+                UINT groupsX = DivRoundUp(d3d.width / d3d.FinalGatherDownScale, 8);
+                UINT groupsY = DivRoundUp(d3d.height / d3d.FinalGatherDownScale, 4);
+                d3d.cmdList[d3d.frameIndex]->Dispatch(Width, Height, Depth);
+
+                // Note: if using the pixel shader (instead of compute) to gather indirect light, transition
+                // the selected volume's resources to D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+              //for (UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
+              //{
+              //    const DDGIVolume* volume = resources.selectedVolumes[volumeIndex];
+              //    volume->TransitionResources(d3d.cmdList, EDDGIExecutionStage::POST_GATHER_PS);
+              //}
+
+                // Wait for the compute pass to finish
+                D3D12_RESOURCE_BARRIER barrier = {};
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barrier.UAV.pResource = resources.output;
+                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+
+            #ifdef GFX_PERF_MARKERS
+                PIXEndEvent(d3d.cmdList[d3d.frameIndex]);
+            #endif
+            }
+
             void RayTraceRadianceCache(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
             {
             #ifdef GFX_PERF_MARKERS
