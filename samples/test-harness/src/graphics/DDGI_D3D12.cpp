@@ -824,6 +824,7 @@ namespace Graphics
                 resources.RadianceCacheRTShaders.Release();
                 resources.rtShaders.Release();
                 resources.indirectCS.Release();
+                resources.probeTraceCS.Release();
 
                 std::wstring root = std::wstring(d3d.shaderCompiler.root.begin(), d3d.shaderCompiler.root.end());
 
@@ -899,6 +900,25 @@ namespace Graphics
                     Shaders::AddDefine(resources.indirectCS, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
                     Shaders::AddDefine(resources.indirectCS, L"FINAL_GATHER_DOWNSCALE", std::to_wstring(d3d.FinalGatherDownScale));
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.indirectCS), "compile indirect lighting compute shader!\n", log);
+                }
+
+                {
+                    std::wstring shaderPath = root + L"shaders/ProbeTraceCS.hlsl";
+                    resources.probeTraceCS.filepath = shaderPath.c_str();
+                    resources.probeTraceCS.entryPoint = L"CS";
+                    resources.probeTraceCS.targetProfile = L"cs_6_6";
+
+                    Shaders::AddDefine(resources.probeTraceCS, L"GFX_NVAPI", std::to_wstring(GFX_NVAPI));
+                    Shaders::AddDefine(resources.probeTraceCS, L"CONSTS_REGISTER", L"b0");   // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
+                    Shaders::AddDefine(resources.probeTraceCS, L"CONSTS_SPACE", L"space1");  // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+
+                    Shaders::AddDefine(resources.probeTraceCS, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(numVolumes));
+                    Shaders::AddDefine(resources.probeTraceCS, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
+                    Shaders::AddDefine(resources.probeTraceCS, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(d3d.CascadeDistance));
+                    Shaders::AddDefine(resources.probeTraceCS, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
+                    CHECK(Shaders::Compile(d3d.shaderCompiler, resources.probeTraceCS), "compile probe trace compute shader!\n", log);
                 }
 
                 return true;
@@ -996,6 +1016,16 @@ namespace Graphics
             #ifdef GFX_NAME_OBJECTS
                 resources.indirectPSO->SetName(L"Indirect Lighting (DDGI) PSO");
             #endif
+
+                CHECK(CreateComputePSO(
+                    d3d.device,
+                    d3dResources.rootSignature,
+                    resources.probeTraceCS,
+                    &resources.probeTracePSO),
+                    "create probe trace PSO!\n", log);
+#ifdef GFX_NAME_OBJECTS
+                resources.indirectPSO->SetName(L"Probe Trace PSO");
+#endif
 
                 return true;
             }
@@ -1707,6 +1737,7 @@ namespace Graphics
                 resources.rtShaders.Release();
                 resources.indirectCS.Release();
                 resources.RadianceCacheRTShaders.Release();
+                resources.probeTraceCS.Release();
 
                 SAFE_RELEASE(resources.rtpso);
                 SAFE_RELEASE(resources.rtpsoInfo);

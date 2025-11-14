@@ -168,6 +168,7 @@ file(GLOB TEST_HARNESS_SHADER_SOURCE
 
 file(GLOB TEST_HARNESS_DDGI_SHADER_SOURCE
     "shaders/ddgi/ProbeTraceRGS.hlsl",
+    "shaders/ddgi/ProbeTraceCS.hlsl",
     "shaders/ddgi/RadianceCacheRGS.hlsl"
 )
 

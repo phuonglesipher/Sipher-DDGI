@@ -27,6 +27,7 @@ namespace Graphics
                 // Shaders
                 Shaders::ShaderRTPipeline    rtShaders;
                 Shaders::ShaderProgram       indirectCS;
+                Shaders::ShaderProgram       probeTraceCS;
 
                 // Ray Tracing
                 ID3D12Resource*              shaderTable = nullptr;
@@ -36,6 +37,7 @@ namespace Graphics
                 ID3D12StateObject*           rtpso = nullptr;
                 ID3D12StateObjectProperties* rtpsoInfo = nullptr;
                 ID3D12PipelineState*         indirectPSO = nullptr;
+                ID3D12PipelineState*         probeTracePSO = nullptr;
 
                 // Shader Table
                 UINT                         shaderTableSize = 0;
