@@ -903,16 +903,16 @@ namespace Graphics
                 }
 
                 {
-                    std::wstring shaderPath = root + L"shaders/ProbeTraceCS.hlsl";
+                    std::wstring shaderPath = root + L"shaders/ddgi/ProbeTraceCS.hlsl";
                     resources.probeTraceCS.filepath = shaderPath.c_str();
                     resources.probeTraceCS.entryPoint = L"CS";
                     resources.probeTraceCS.targetProfile = L"cs_6_6";
 
-                    Shaders::AddDefine(resources.probeTraceCS, L"GFX_NVAPI", std::to_wstring(GFX_NVAPI));
                     Shaders::AddDefine(resources.probeTraceCS, L"CONSTS_REGISTER", L"b0");   // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
                     Shaders::AddDefine(resources.probeTraceCS, L"CONSTS_SPACE", L"space1");  // for DDGIRootConstants, see Direct3D12.cpp::CreateGlobalRootSignature(...)
                     Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
                     Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_DDGI_NUM_VOLUMES", std::to_wstring(numVolumes));
 
                     Shaders::AddDefine(resources.probeTraceCS, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(numVolumes));
                     Shaders::AddDefine(resources.probeTraceCS, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
@@ -992,7 +992,7 @@ namespace Graphics
                 SAFE_RELEASE(resources.rtpso);
                 SAFE_RELEASE(resources.rtpsoInfo);
                 SAFE_RELEASE(resources.indirectPSO);
-                SAFE_RELEASE(resources.RadianceCachingPSO);
+                SAFE_RELEASE(resources.probeTracePSO);
 
                 // Create the RTPSO
                 CHECK(CreateRayTracingPSO(
@@ -1024,7 +1024,7 @@ namespace Graphics
                     &resources.probeTracePSO),
                     "create probe trace PSO!\n", log);
 #ifdef GFX_NAME_OBJECTS
-                resources.indirectPSO->SetName(L"Probe Trace PSO");
+                resources.probeTracePSO->SetName(L"Probe Trace PSO");
 #endif
 
                 return true;
@@ -1378,22 +1378,11 @@ namespace Graphics
             #endif
 
                 // Set the PSO
-                d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.indirectPSO);
+                d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.probeTracePSO);
 
                 // Dispatch threads
-                UINT Width, Height, Depth;
-                volumes->GetRayDispatchDimensions(Width, Height, Depth);
-                UINT groupsX = DivRoundUp(d3d.width / d3d.FinalGatherDownScale, 8);
-                UINT groupsY = DivRoundUp(d3d.height / d3d.FinalGatherDownScale, 4);
-                d3d.cmdList[d3d.frameIndex]->Dispatch(Width, Height, Depth);
-
-                // Note: if using the pixel shader (instead of compute) to gather indirect light, transition
-                // the selected volume's resources to D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-              //for (UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
-              //{
-              //    const DDGIVolume* volume = resources.selectedVolumes[volumeIndex];
-              //    volume->TransitionResources(d3d.cmdList, EDDGIExecutionStage::POST_GATHER_PS);
-              //}
+                int3 ProbesCount = volumes->GetProbeCounts();
+                d3d.cmdList[d3d.frameIndex]->Dispatch(ProbesCount.x, ProbesCount.y, ProbesCount.z);
 
                 // Wait for the compute pass to finish
                 D3D12_RESOURCE_BARRIER barrier = {};
@@ -1733,8 +1722,12 @@ namespace Graphics
                     static int volumeIndex = 0;
                     
                     // Trace rays from DDGI probes to sample the environment
+                    // GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
+                    // RayTraceVolumes(d3d, d3dResources, resources, resources.selectedVolumes[volumeIndex]);
+                    // GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
+
                     GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
-                    RayTraceVolumes(d3d, d3dResources, resources, resources.selectedVolumes[volumeIndex]);
+                    RayTraceVolumeCS(d3d, d3dResources, resources, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
 
                     GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
