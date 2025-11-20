@@ -170,8 +170,8 @@ uint3 DDGIGetRayDataTexelCoords(int rayIndex, int probeIndex, DDGIVolumeDescGPU 
 
     uint3 coords;
     coords.x = rayIndex;
-    coords.z = probeIndex / probesPerPlane;
-    coords.y = probeIndex - (coords.z * probesPerPlane);
+    coords.z = probeIndex / 1600;
+    coords.y = probeIndex % 1600;
 
     return coords;
 }

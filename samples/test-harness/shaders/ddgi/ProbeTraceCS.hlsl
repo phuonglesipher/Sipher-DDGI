@@ -30,7 +30,7 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     float3 ProbeCoords = DDGIGetProbeCoords(ProbeIndex, volume);
     
     // Adjust the probe index for the scroll offsets
-    ProbeIndex = DDGIGetScrollingProbeIndex(ProbeCoords, volume);
+    //ProbeIndex = DDGIGetScrollingProbeIndex(ProbeCoords, volume);
     
     // Get the probe data texture array
     Texture2DArray<float4> ProbeData = GetTex2DArray(ResourceIndices.probeDataSRVIndex);
@@ -48,20 +48,20 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     
     // Setup the probe ray
     RayDesc ray;
-    ray.Origin = probeWorldPosition;
+    ray.Origin = (float3)0.0;
     ray.Direction = probeRayDirection;
     ray.TMin = 0.f;
     ray.TMax = volume.probeMaxRayDistance;
     
     // Get the acceleration structure
-    RaytracingAccelerationStructure SceneTLAS = GetAccelerationStructure(SCENE_TLAS_INDEX);
+    RaytracingAccelerationStructure SceneTLAS = TLAS[0];
     
     // Get the ray data texture array
     RWTexture2DArray<float4> RayData = GetRWTex2DArray(ResourceIndices.rayDataUAVIndex);
     
-    RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery;
+    RayQuery<RAY_FLAG_NONE> RQuery;
     RQuery.TraceRayInline(SceneTLAS,
-            0xFF,
+            0,
             0,
             ray);
     RQuery.Proceed();
