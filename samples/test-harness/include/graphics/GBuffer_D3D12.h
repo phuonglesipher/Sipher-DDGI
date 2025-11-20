@@ -23,9 +23,11 @@ namespace Graphics
                 ID3D12Resource*              shaderTable = nullptr;
                 ID3D12Resource*              shaderTableUpload = nullptr;
                 Shaders::ShaderRTPipeline    shaders;
+                Shaders::ShaderProgram       rayTraceCS;
 
                 ID3D12StateObject*           rtpso = nullptr;
                 ID3D12StateObjectProperties* rtpsoInfo = nullptr;
+                ID3D12PipelineState*           rayTracePSO = nullptr;
 
                 uint32_t                     shaderTableSize = 0;
                 uint32_t                     shaderTableRecordSize = 0;

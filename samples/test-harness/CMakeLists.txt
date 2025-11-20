@@ -159,6 +159,7 @@ file(GLOB TEST_HARNESS_SHADER_SOURCE
     "shaders/CHS.hlsl"
     "shaders/Composite.hlsl"
     "shaders/GBufferRGS.hlsl"
+    "shaders/GBufferCS.hlsl"
     "shaders/IndirectCS.hlsl"
     "shaders/Miss.hlsl"
     "shaders/PathTraceRGS.hlsl"

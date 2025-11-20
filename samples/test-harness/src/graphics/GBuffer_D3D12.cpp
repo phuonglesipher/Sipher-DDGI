@@ -25,6 +25,7 @@ namespace Graphics
             {
                 // Release existing shaders
                 resources.shaders.Release();
+                resources.rayTraceCS.Release();
 
                 std::wstring root = std::wstring(d3d.shaderCompiler.root.begin(), d3d.shaderCompiler.root.end());
 
@@ -65,6 +66,16 @@ namespace Graphics
                 // Set the payload size
                 resources.shaders.payloadSizeInBytes = sizeof(PackedPayload);
 
+                {
+                    std::wstring shaderPath = root + L"shaders/GBufferCS.hlsl";
+                    resources.rayTraceCS.filepath = shaderPath.c_str();
+                    resources.rayTraceCS.entryPoint = L"CS";
+                    resources.rayTraceCS.targetProfile = L"cs_6_6";
+                    Shaders::AddDefine(resources.rayTraceCS, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+
+                    CHECK(Shaders::Compile(d3d.shaderCompiler, resources.rayTraceCS), "compile gbuffer compute shader!\n", log);
+                }
+
                 return true;
             }
 
@@ -73,6 +84,7 @@ namespace Graphics
                 // Release existing PSOs
                 SAFE_RELEASE(resources.rtpsoInfo);
                 SAFE_RELEASE(resources.rtpso);
+                SAFE_RELEASE(resources.rayTracePSO);
 
                 // Create the RTPSO
                 CHECK(CreateRayTracingPSO(
@@ -86,6 +98,16 @@ namespace Graphics
             #ifdef GFX_NAME_OBJECTS
                 resources.rtpso->SetName(L"GBuffer RTPSO");
             #endif
+
+                CHECK(CreateComputePSO(
+                          d3d.device,
+                          d3dResources.rootSignature,
+                          resources.rayTraceCS,
+                          &resources.rayTracePSO),
+                          "create GBuffer CS PSO!\n", log);
+#ifdef GFX_NAME_OBJECTS
+                resources.rayTracePSO->SetName(L"GBuffer Trace PSO");
+#endif
 
                 return true;
             }
@@ -283,13 +305,25 @@ namespace Graphics
                 desc.Height = d3d.height;
                 desc.Depth = 1;
 
-                // Set the PSO
-                d3d.cmdList[d3d.frameIndex]->SetPipelineState1(resources.rtpso);
+                // {
+                //     // Set the PSO
+                //     d3d.cmdList[d3d.frameIndex]->SetPipelineState1(resources.rtpso);
+                //
+                //     // Dispatch rays
+                //     GPU_TIMESTAMP_BEGIN(resources.gpuStat->GetGPUQueryBeginIndex());
+                //     d3d.cmdList[d3d.frameIndex]->DispatchRays(&desc);
+                //     GPU_TIMESTAMP_END(resources.gpuStat->GetGPUQueryEndIndex());
+                // }
 
-                // Dispatch rays
-                GPU_TIMESTAMP_BEGIN(resources.gpuStat->GetGPUQueryBeginIndex());
-                d3d.cmdList[d3d.frameIndex]->DispatchRays(&desc);
-                GPU_TIMESTAMP_END(resources.gpuStat->GetGPUQueryEndIndex());
+                {
+                    UINT X = d3d.width / 8;
+                    UINT Y = d3d.height / 8;
+                    UINT Z = 1;
+                    d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.rayTracePSO);
+                    GPU_TIMESTAMP_BEGIN(resources.gpuStat->GetGPUQueryBeginIndex());
+                    d3d.cmdList[d3d.frameIndex]->Dispatch(X, Y, Z);
+                    GPU_TIMESTAMP_END(resources.gpuStat->GetGPUQueryEndIndex());
+                }
 
                 D3D12_RESOURCE_BARRIER barriers[4] = {};
                 barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -317,12 +351,14 @@ namespace Graphics
             {
                 // Release shaders and shader table
                 resources.shaders.Release();
+                resources.rayTraceCS.Release();
                 SAFE_RELEASE(resources.shaderTable);
                 SAFE_RELEASE(resources.shaderTableUpload);
 
                 // Release PSOs
                 SAFE_RELEASE(resources.rtpsoInfo);
                 SAFE_RELEASE(resources.rtpso);
+                SAFE_RELEASE(resources.rayTracePSO);
             }
 
             /**

@@ -1,0 +1,329 @@
+/*
+* Copyright (c) 2019-2023, NVIDIA CORPORATION.  All rights reserved.
+*
+* NVIDIA CORPORATION and its licensors retain all intellectual property
+* and proprietary rights in and to this software, related documentation
+* and any modifications thereto.  Any use, reproduction, disclosure or
+* distribution of this software and related documentation without an express
+* license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
+
+#include "include/Common.hlsl"
+#include "include/Descriptors.hlsl"
+
+uint3 LoadIndices(uint meshIndex, uint primitiveIndex, GeometryData geometry)
+{
+    uint address = geometry.indexByteAddress + (primitiveIndex * 3) * 4;  // 3 indices per primitive, 4 bytes for each index
+    return GetIndexBuffer(meshIndex).Load3(address); // Mesh index buffers start at index 4 and alternate with vertex buffer pointers
+}
+
+void LoadVertices(uint meshIndex, uint primitiveIndex, GeometryData geometry, out Vertex vertices[3])
+{
+    // Get the indices
+    uint3 indices = LoadIndices(meshIndex, primitiveIndex, geometry);
+
+    // Load the vertices
+    uint address;
+    for (uint i = 0; i < 3; i++)
+    {
+        vertices[i] = (Vertex)0;
+        address = geometry.vertexByteAddress + (indices[i] * 12) * 4;  // Vertices contain 12 floats / 48 bytes
+
+        // Load the position
+        vertices[i].position = asfloat(GetVertexBuffer(meshIndex).Load3(address));
+        address += 12;
+
+        // Load the normal
+        vertices[i].normal = asfloat(GetVertexBuffer(meshIndex).Load3(address));
+        address += 12;
+
+        // Load the tangent
+        vertices[i].tangent = asfloat(GetVertexBuffer(meshIndex).Load4(address));
+        address += 16;
+
+        // Load the texture coordinates
+        vertices[i].uv0 = asfloat(GetVertexBuffer(meshIndex).Load2(address));
+    }
+}
+
+Vertex InterpolateVertex(Vertex vertices[3], float3 barycentrics)
+{
+    // Interpolate the vertex attributes
+    Vertex v = (Vertex)0;
+    for (uint i = 0; i < 3; i++)
+    {
+        v.position += vertices[i].position * barycentrics[i];
+        v.normal += vertices[i].normal * barycentrics[i];
+        v.tangent.xyz += vertices[i].tangent.xyz * barycentrics[i];
+        v.uv0 += vertices[i].uv0 * barycentrics[i];
+    }
+
+    // Normalize normal and tangent vectors, set tangent direction component
+    v.normal = normalize(v.normal);
+    v.tangent.xyz = normalize(v.tangent.xyz);
+    v.tangent.w = vertices[0].tangent.w;
+
+    return v;
+}
+
+struct RayDiff
+{
+    float3 dOdx;
+    float3 dOdy;
+    float3 dDdx;
+    float3 dDdy;
+};
+
+/**
+ * Get the ray direction differentials.
+ */
+void ComputeRayDirectionDifferentials(float3 nonNormalizedCameraRaydir, float3 right, float3 up, float2 viewportDims, out float3 dDdx, out float3 dDdy)
+{
+    // Igehy Equation 8
+    float dd = dot(nonNormalizedCameraRaydir, nonNormalizedCameraRaydir);
+    float divd = 2.f / (dd * sqrt(dd));
+    float dr = dot(nonNormalizedCameraRaydir, right);
+    float du = dot(nonNormalizedCameraRaydir, up);
+    dDdx = ((dd * right) - (dr * nonNormalizedCameraRaydir)) * divd / viewportDims.x;
+    dDdy = -((dd * up) - (du * nonNormalizedCameraRaydir)) * divd / viewportDims.y;
+}
+
+/**
+ * Propogate the ray differential to the current hit point.
+ */
+void PropagateRayDiff(float3 D, float t, float3 N, inout RayDiff rd)
+{
+    // Part of Igehy Equation 10
+    float3 dodx = rd.dOdx + t * rd.dDdx;
+    float3 dody = rd.dOdy + t * rd.dDdy;
+
+    // Igehy Equations 10 and 12
+    float rcpDN = 1.f / dot(D, N);
+    float dtdx = -dot(dodx, N) * rcpDN;
+    float dtdy = -dot(dody, N) * rcpDN;
+    dodx += D * dtdx;
+    dody += D * dtdy;
+
+    // Store differential origins
+    rd.dOdx = dodx;
+    rd.dOdy = dody;
+}
+
+/**
+ * Apply instance transforms to geometry, compute triangle edges and normal.
+ */
+void PrepVerticesForRayDiffs(Vertex vertices[3], RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery, out float3 edge01, out float3 edge02, out float3 faceNormal)
+{
+    // Apply instance transforms
+    vertices[0].position = mul(RQuery.CommittedObjectToWorld3x4(), float4(vertices[0].position, 1.f)).xyz;
+    vertices[1].position = mul(RQuery.CommittedObjectToWorld3x4(), float4(vertices[1].position, 1.f)).xyz;
+    vertices[2].position = mul(RQuery.CommittedObjectToWorld3x4(), float4(vertices[2].position, 1.f)).xyz;
+
+    // Find edges and face normal
+    edge01 = vertices[1].position - vertices[0].position;
+    edge02 = vertices[2].position - vertices[0].position;
+    faceNormal = cross(edge01, edge02);
+}
+
+/**
+ * Get the barycentric differentials.
+ */
+void ComputeBarycentricDifferentials(RayDiff rd, float3 rayDir, float3 edge01, float3 edge02, float3 faceNormalW, out float2 dBarydx, out float2 dBarydy)
+{
+    // Igehy "Normal-Interpolated Triangles"
+    float3 Nu = cross(edge02, faceNormalW);
+    float3 Nv = cross(edge01, faceNormalW);
+
+    // Plane equations for the triangle edges, scaled in order to make the dot with the opposite vertex equal to 1
+    float3 Lu = Nu / (dot(Nu, edge01));
+    float3 Lv = Nv / (dot(Nv, edge02));
+
+    dBarydx.x = dot(Lu, rd.dOdx);     // du / dx
+    dBarydx.y = dot(Lv, rd.dOdx);     // dv / dx
+    dBarydy.x = dot(Lu, rd.dOdy);     // du / dy
+    dBarydy.y = dot(Lv, rd.dOdy);     // dv / dy
+}
+
+/**
+ * Get the interpolated texture coordinate differentials.
+ */
+void InterpolateTexCoordDifferentials(float2 dBarydx, float2 dBarydy, Vertex vertices[3], out float2 dx, out float2 dy)
+{
+    float2 delta1 = vertices[1].uv0 - vertices[0].uv0;
+    float2 delta2 = vertices[2].uv0 - vertices[0].uv0;
+    dx = dBarydx.x * delta1 + dBarydx.y * delta2;
+    dy = dBarydy.x * delta1 + dBarydy.y * delta2;
+}
+
+/**
+ * Get the texture coordinate differentials using ray differentials.
+ */
+//void ComputeUV0Differentials(Vertex vertices[3], ConstantBuffer<Camera> camera, float3 rayDirection, float hitT, out float2 dUVdx, out float2 dUVdy)
+void ComputeUV0Differentials(Vertex vertices[3], RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery, float3 rayDirection, float hitT, out float2 dUVdx, out float2 dUVdy)
+{
+    // Initialize a ray differential
+    RayDiff rd = (RayDiff)0;
+
+    // Get ray direction differentials
+    //ComputeRayDirectionDifferentials(rayDirection, camera.right, camera.up, camera.resolution, rd.dDdx, rd.dDdy);
+    ComputeRayDirectionDifferentials(rayDirection, GetCamera().right, GetCamera().up, GetCamera().resolution, rd.dDdx, rd.dDdy);
+
+    // Get the triangle edges and face normal
+    float3 edge01, edge02, faceNormal;
+    PrepVerticesForRayDiffs(vertices, RQuery, edge01, edge02, faceNormal);
+
+    // Propagate the ray differential to the current hit point
+    PropagateRayDiff(rayDirection, hitT, faceNormal, rd);
+
+    // Get the barycentric differentials
+    float2 dBarydx, dBarydy;
+    ComputeBarycentricDifferentials(rd, rayDirection, edge01, edge02, faceNormal, dBarydx, dBarydy);
+
+    // Interpolate the texture coordinate differentials
+    InterpolateTexCoordDifferentials(dBarydx, dBarydy, vertices, dUVdx, dUVdy);
+}
+
+void ShadeTriangleHit(inout Payload payload, RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery)
+{
+    payload.hitT = RQuery.CommittedRayT();
+    payload.hitKind = 0;
+
+    uint InstanceID = RQuery.CommittedInstanceID();
+    uint GeometryIndex = RQuery.CommittedGeometryIndex();
+    uint PrimitiveIndex = RQuery.CommittedPrimitiveIndex();
+
+    // Load the intersected mesh geometry's data
+    GeometryData geometry;
+    GetGeometryData(InstanceID, GeometryIndex, geometry);
+
+    // Load the triangle's vertices
+    Vertex vertices[3];
+    LoadVertices(InstanceID, PrimitiveIndex, geometry, vertices);
+
+    // Interpolate the triangle's attributes for the hit location (position, normal, tangent, texture coordinates)
+    float2 Barycentrics = RQuery.CommittedTriangleBarycentrics();
+    float3 barycentrics = float3((1.f - Barycentrics.x - Barycentrics.y), Barycentrics.x, Barycentrics.y);
+    Vertex v = InterpolateVertex(vertices, barycentrics);
+
+    // World position
+    payload.worldPosition = v.position;
+    payload.worldPosition = mul(RQuery.CommittedObjectToWorld3x4(), float4(payload.worldPosition, 1.f)).xyz; // instance transform
+
+    // Geometric normal
+    payload.normal = v.normal;
+    payload.normal = normalize(mul(RQuery.CommittedObjectToWorld3x4(), float4(payload.normal, 0.f)).xyz);
+    payload.shadingNormal = payload.normal;
+
+    // Load the surface material
+    Material material = GetMaterial(geometry);
+    payload.albedo = material.albedo;
+    payload.opacity = material.opacity;
+
+    // Compute texture coordinate differentials
+    float2 dUVdx, dUVdy;
+    ComputeUV0Differentials(vertices, RQuery, RQuery.WorldRayDirection(), RQuery.CommittedRayT(), dUVdx, dUVdy);
+
+    // TODO-ACM: passing ConstantBuffer<T> to functions crashes DXC HLSL->SPIRV
+    //ConstantBuffer<Camera> camera = GetCamera();
+    //ComputeUV0Differentials(vertices, camera, WorldRayDirection(), RayTCurrent(), dUVdx, dUVdy);
+
+    // Albedo and Opacity
+    if (material.albedoTexIdx > -1)
+    {
+        float4 bco = GetTex2D(material.albedoTexIdx).SampleGrad(GetAnisoWrapSampler(), v.uv0, dUVdx, dUVdy);
+        payload.albedo *= bco.rgb;
+        payload.opacity *= bco.a;
+    }
+
+    // Shading normal
+    if (material.normalTexIdx > -1)
+    {
+        float3 tangent = normalize(mul(ObjectToWorld3x4(), float4(v.tangent.xyz, 0.f)).xyz);
+        float3 bitangent = cross(payload.normal, tangent) * v.tangent.w;
+        float3x3 TBN = { tangent, bitangent, payload.normal };
+
+        payload.shadingNormal = GetTex2D(material.normalTexIdx).SampleGrad(GetAnisoWrapSampler(), v.uv0, dUVdx, dUVdy).xyz;
+        payload.shadingNormal = (payload.shadingNormal * 2.f) - 1.f;    // Transform to [-1, 1]
+        payload.shadingNormal = mul(payload.shadingNormal, TBN);        // Transform tangent-space normal to world-space
+    }
+
+    // Roughness and Metallic
+    if (material.roughnessMetallicTexIdx > -1)
+    {
+        float2 rm = GetTex2D(material.roughnessMetallicTexIdx).SampleGrad(GetAnisoWrapSampler(), v.uv0, dUVdx, dUVdy).gb;
+        payload.roughness = rm.x;
+        payload.metallic = rm.y;
+    }
+
+    // Emissive
+    if (material.emissiveTexIdx > -1)
+    {
+        payload.albedo += GetTex2D(material.emissiveTexIdx).SampleGrad(GetAnisoWrapSampler(), v.uv0, dUVdx, dUVdy).rgb;
+    }
+}
+
+[numthreads(8, 8, 1)]
+void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint2 LaunchIndex = DispatchThreadID.xy;
+    uint2 LaunchDimensions;
+    
+    // Get the lights
+    StructuredBuffer<Light> Lights = GetLights();
+    
+    // Get the (bindless) resources
+    RWTexture2D<float4> GBufferA = GetRWTex2D(GBUFFERA_INDEX);
+    RWTexture2D<float4> GBufferB = GetRWTex2D(GBUFFERB_INDEX);
+    RWTexture2D<float4> GBufferC = GetRWTex2D(GBUFFERC_INDEX);
+    RWTexture2D<float4> GBufferD = GetRWTex2D(GBUFFERD_INDEX);
+    RaytracingAccelerationStructure SceneTLAS = GetAccelerationStructure(SCENE_TLAS_INDEX);
+    GBufferA.GetDimensions(LaunchDimensions.x, LaunchDimensions.y);
+    
+    // Setup the primary ray
+    RayDesc ray = (RayDesc)0;
+    ray.Origin = GetCamera().position;
+    ray.TMin = 0.f;
+    ray.TMax = 1e27f;
+    
+    // Pixel coordinates, remapped to [-1, 1] with y-direction flipped to match world-space
+    // Camera basis, adjusted for the aspect ratio and vertical field of view
+    float  px = (((float)LaunchIndex.x + 0.5f) / (float)LaunchDimensions.x) * 2.f - 1.f;
+    float  py = (((float)LaunchIndex.y + 0.5f) / (float)LaunchDimensions.y) * -2.f + 1.f;
+    float3 right = GetCamera().aspect * GetCamera().tanHalfFovY * GetCamera().right;
+    float3 up = GetCamera().tanHalfFovY * GetCamera().up;
+    
+    // Compute the primary ray direction
+    ray.Direction = (px * right) + (py * up) + GetCamera().forward;
+
+    RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery;
+    RQuery.TraceRayInline(SceneTLAS,
+            0,
+            0xFF,
+            ray);
+    RQuery.Proceed();
+    if(RQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+    {
+        Payload payload;
+        ShadeTriangleHit(payload, RQuery);
+        // Convert albedo to sRGB before storing
+        payload.albedo = LinearToSRGB(payload.albedo);
+    
+        // Write the GBuffer
+        GBufferA[LaunchIndex] = float4(payload.albedo, COMPOSITE_FLAG_LIGHT_PIXEL);
+        GBufferB[LaunchIndex] = float4(payload.worldPosition, payload.hitT);
+        GBufferC[LaunchIndex] = float4(payload.normal, 1.f);
+        //GBufferD[LaunchIndex] = float4(diffuse, 1.f);
+    }
+    else
+    {
+        // Convert albedo to sRGB before storing
+        GBufferA[LaunchIndex] = float4(LinearToSRGB(GetGlobalConst(app, skyRadiance)), COMPOSITE_FLAG_POSTPROCESS_PIXEL);
+        GBufferB[LaunchIndex].w = -1.f;
+    
+        // Optional clear writes. Not necessary for final image, but
+        // useful for image comparisons during regression testing.
+        GBufferB[LaunchIndex] = float4(0.f, 0.f, 0.f, -1.f);
+        GBufferC[LaunchIndex] = float4(0.f, 0.f, 0.f, 0.f);
+        GBufferD[LaunchIndex] = float4(0.f, 0.f, 0.f, 0.f);
+    }
+}

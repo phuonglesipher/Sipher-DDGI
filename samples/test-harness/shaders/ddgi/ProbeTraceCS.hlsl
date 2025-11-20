@@ -59,10 +59,10 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     // Get the ray data texture array
     RWTexture2DArray<float4> RayData = GetRWTex2DArray(ResourceIndices.rayDataUAVIndex);
     
-    RayQuery<RAY_FLAG_NONE> RQuery;
+    RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery;
     RQuery.TraceRayInline(SceneTLAS,
             0,
-            0,
+            0xFF,
             ray);
     RQuery.Proceed();
     if(RQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
