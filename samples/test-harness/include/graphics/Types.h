@@ -84,6 +84,25 @@ namespace Graphics
         uint          volumeIndex;
     };
 
+    struct HitPackedData
+    {
+        uint ProbePacked;     // 16 bits Probe index, 8 bits ray index, 8 bits volume index
+        uint PrimitivePacked; // 16 bits Instance index, 16 bits primitive index
+        uint Barycentrics;    // 16 bits barycentric coordinate U, 16 bits barycentric coordinate V
+        float HitDistance;
+    };
+
+    struct HitUnpackedData
+    {
+        uint ProbeIndex;
+        uint RayIndex;
+        uint VolumeIndex;
+        uint PrimitiveIndex;
+        uint InstanceIndex;
+        float2 Barycentrics;
+        float HitDistance;
+    };
+
     struct RadianceCacheVisualization
     {
         float3 DirectRadiance;

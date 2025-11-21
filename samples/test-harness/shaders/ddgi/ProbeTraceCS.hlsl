@@ -48,7 +48,7 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     
     // Setup the probe ray
     RayDesc ray;
-    ray.Origin = (float3)0.0;
+    ray.Origin = probeWorldPosition;
     ray.Direction = probeRayDirection;
     ray.TMin = 0.f;
     ray.TMax = volume.probeMaxRayDistance;
