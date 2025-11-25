@@ -87,7 +87,7 @@ namespace Graphics
     struct HitPackedData
     {
         uint ProbePacked;     // 16 bits Probe index, 8 bits ray index, 8 bits volume index
-        uint PrimitivePacked; // 16 bits Instance index, 16 bits primitive index
+        uint PrimitivePacked; // 12 bits Instance index, 10 bits primitive index, 10 bits geometry index
         uint Barycentrics;    // 16 bits barycentric coordinate U, 16 bits barycentric coordinate V
         float HitDistance;
     };
@@ -99,6 +99,7 @@ namespace Graphics
         uint VolumeIndex;
         uint PrimitiveIndex;
         uint InstanceIndex;
+        uint GeometryIndex;
         float2 Barycentrics;
         float HitDistance;
     };

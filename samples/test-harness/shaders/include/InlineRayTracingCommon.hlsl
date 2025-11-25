@@ -1,18 +1,15 @@
 #ifndef INLINE_RAY_TRACING_COMMON_HLSL
 #define INLINE_RAY_TRACING_COMMON_HLSL
-#include "Types.h"
 
 void PackData(HitUnpackedData InData, out HitPackedData OutData)
 {
-    OutData.ProbePacked = (asuint16(InData.ProbeIndex) & 0xFFFF) |
-                          ((asuint16(InData.RayIndex) & 0xFF) << 16) |
-                          ((asuint16(InData.VolumeIndex) & 0xFF) << 24);
+    OutData.ProbePacked = (InData.ProbeIndex & 0xFFFF) |
+                          ((InData.RayIndex & 0xFF) << 16) |
+                          (InData.VolumeIndex & 0xFF) << 24;
 
-    OutData.PrimitivePacked = InData.PrimitiveIndex;
-    OutData.PrimitivePacked |= InData.InstanceIndex << 16;
-
-    OutData.PrimitivePacked = (InData.InstanceIndex & 0xFFFF) | 
-                              ((InData.PrimitiveIndex & 0xFFFF) << 16);
+    OutData.PrimitivePacked = (InData.InstanceIndex & 0xFFF) | 
+                              ((InData.PrimitiveIndex & 0x3FF) << 12) | 
+                              ((InData.GeometryIndex & 0x3FF) << 22);
 
     uint2 UBarycentrics = f32tof16(InData.Barycentrics);
     OutData.Barycentrics = (UBarycentrics.x & 0xFFFF) | 
@@ -27,13 +24,14 @@ void UnpackData(HitPackedData InData, out HitUnpackedData OutData)
     OutData.RayIndex = (InData.ProbePacked >> 16) & 0xFF;
     OutData.VolumeIndex = (InData.ProbePacked >> 24) & 0xFF;
 
-    OutData.InstanceIndex = InData.PrimitivePacked & 0xFFFF;
-    OutData.PrimitiveIndex = (InData.PrimitivePacked >> 16) & 0xFFFF;
+    OutData.InstanceIndex = InData.PrimitivePacked & 0xFFF;
+    OutData.PrimitiveIndex = (InData.PrimitivePacked >> 12) & 0x3FF;
+    OutData.GeometryIndex = (InData.PrimitivePacked >> 22) & 0x3FF;
 
     uint2 UBarycentrics;
     UBarycentrics.x = InData.Barycentrics & 0xFFFF;
     UBarycentrics.y = (InData.Barycentrics >> 16) & 0xFFFF;
-    InData.Barycentrics = f16tof32(UBarycentrics);
+    OutData.Barycentrics = f16tof32(UBarycentrics);
 
     InData.HitDistance = OutData.HitDistance;
 }
@@ -139,12 +137,12 @@ void PropagateRayDiff(float3 D, float t, float3 N, inout RayDiff rd)
 /**
  * Apply instance transforms to geometry, compute triangle edges and normal.
  */
-void PrepVerticesForRayDiffs(Vertex vertices[3], RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery, out float3 edge01, out float3 edge02, out float3 faceNormal)
+void PrepVerticesForRayDiffs(Vertex vertices[3], float3x4 ObjectToWorld, out float3 edge01, out float3 edge02, out float3 faceNormal)
 {
     // Apply instance transforms
-    vertices[0].position = mul(RQuery.CommittedObjectToWorld3x4(), float4(vertices[0].position, 1.f)).xyz;
-    vertices[1].position = mul(RQuery.CommittedObjectToWorld3x4(), float4(vertices[1].position, 1.f)).xyz;
-    vertices[2].position = mul(RQuery.CommittedObjectToWorld3x4(), float4(vertices[2].position, 1.f)).xyz;
+    vertices[0].position = mul(ObjectToWorld, float4(vertices[0].position, 1.f)).xyz;
+    vertices[1].position = mul(ObjectToWorld, float4(vertices[1].position, 1.f)).xyz;
+    vertices[2].position = mul(ObjectToWorld, float4(vertices[2].position, 1.f)).xyz;
 
     // Find edges and face normal
     edge01 = vertices[1].position - vertices[0].position;
@@ -186,7 +184,7 @@ void InterpolateTexCoordDifferentials(float2 dBarydx, float2 dBarydy, Vertex ver
  * Get the texture coordinate differentials using ray differentials.
  */
 //void ComputeUV0Differentials(Vertex vertices[3], ConstantBuffer<Camera> camera, float3 rayDirection, float hitT, out float2 dUVdx, out float2 dUVdy)
-void ComputeUV0Differentials(Vertex vertices[3], RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery, float3 rayDirection, float hitT, out float2 dUVdx, out float2 dUVdy)
+void ComputeUV0Differentials(Vertex vertices[3], float3x4 ObjectToWorld, float3 rayDirection, float hitT, out float2 dUVdx, out float2 dUVdy)
 {
     // Initialize a ray differential
     RayDiff rd = (RayDiff)0;
@@ -197,7 +195,7 @@ void ComputeUV0Differentials(Vertex vertices[3], RayQuery<RAY_FLAG_CULL_BACK_FAC
 
     // Get the triangle edges and face normal
     float3 edge01, edge02, faceNormal;
-    PrepVerticesForRayDiffs(vertices, RQuery, edge01, edge02, faceNormal);
+    PrepVerticesForRayDiffs(vertices, ObjectToWorld, edge01, edge02, faceNormal);
 
     // Propagate the ray differential to the current hit point
     PropagateRayDiff(rayDirection, hitT, faceNormal, rd);
@@ -210,7 +208,7 @@ void ComputeUV0Differentials(Vertex vertices[3], RayQuery<RAY_FLAG_CULL_BACK_FAC
     InterpolateTexCoordDifferentials(dBarydx, dBarydy, vertices, dUVdx, dUVdy);
 }
 
-void ShadeTriangleHit(inout Payload payload, RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery)
+void ShadeTriangleHit(inout Payload payload, RayQuery<RAY_FLAG_NONE> RQuery)
 {
     payload.hitT = RQuery.CommittedRayT();
     payload.hitKind = 0;
@@ -248,7 +246,7 @@ void ShadeTriangleHit(inout Payload payload, RayQuery<RAY_FLAG_CULL_BACK_FACING_
 
     // Compute texture coordinate differentials
     float2 dUVdx, dUVdy;
-    ComputeUV0Differentials(vertices, RQuery, RQuery.WorldRayDirection(), RQuery.CommittedRayT(), dUVdx, dUVdy);
+    ComputeUV0Differentials(vertices, RQuery.CommittedObjectToWorld3x4(), RQuery.WorldRayDirection(), RQuery.CommittedRayT(), dUVdx, dUVdy);
 
     // TODO-ACM: passing ConstantBuffer<T> to functions crashes DXC HLSL->SPIRV
     //ConstantBuffer<Camera> camera = GetCamera();
