@@ -157,13 +157,13 @@ void RayGen()
         return;
     }
 
-    RWStructuredBuffer<HitCachingPayload> HitCachingBuffer = GetHitCachingBuffer();
-    uint HashID = SpatialHashCascadeIndex(payload.worldPosition, GetCascadeCellRadius(), GetMaxCacheCellCount(), GetCascadeCount(), GetCascadeBaseDistance());
-    HitCachingPayload NewPayload;
-    NewPayload.payload = packedPayload;
-    NewPayload.isActived = true;
-    NewPayload.probeIndex = probeIndex;
-    NewPayload.rayIndex = rayIndex;
-    NewPayload.volumeIndex = volumeIndex;
-    HitCachingBuffer[HashID] = NewPayload;
+    // RWStructuredBuffer<HitCachingPayload> HitCachingBuffer = GetHitCachingBuffer();
+    // uint HashID = SpatialHashCascadeIndex(payload.worldPosition, GetCascadeCellRadius(), GetMaxCacheCellCount(), GetCascadeCount(), GetCascadeBaseDistance());
+    // HitCachingPayload NewPayload;
+    // NewPayload.payload = packedPayload;
+    // NewPayload.isActived = true;
+    // NewPayload.probeIndex = probeIndex;
+    // NewPayload.rayIndex = rayIndex;
+    // NewPayload.volumeIndex = volumeIndex;
+    // HitCachingBuffer[HashID] = NewPayload;
 }

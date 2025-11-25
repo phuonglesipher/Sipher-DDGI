@@ -72,7 +72,7 @@ VK_BINDING(5, 0) StructuredBuffer<DDGIVolumeDescGPUPacked>   DDGIVolumes        
 VK_BINDING(6, 0) StructuredBuffer<DDGIVolumeResourceIndices> DDGIVolumeBindless  : register(t6, space0);
 
 VK_BINDING(7, 0) RWStructuredBuffer<TLASInstance>                   RWTLASInstances                  : register(u5, space0);
-VK_BINDING(14, 0) RWStructuredBuffer<HitCachingPayload>             HitCaching                       : register(u5, space1);
+VK_BINDING(14, 0) RWStructuredBuffer<HitPackedData>             HitCaching                       : register(u5, space1);
 VK_BINDING(14, 0) RWStructuredBuffer<float3>                        RadianceCaching                  : register(u5, space2);
 VK_BINDING(14, 0) RWStructuredBuffer<RadianceCacheVisualization>    RadianceCachingVisualization     : register(u5, space3);
 
@@ -137,7 +137,42 @@ StructuredBuffer<DDGIVolumeResourceIndices> GetDDGIVolumeResourceIndices(uint in
 
 RWStructuredBuffer<TLASInstance> GetDDGIProbeVisTLASInstances() { return RWTLASInstances; }
 
-RWStructuredBuffer<HitCachingPayload> GetHitCachingBuffer() { return HitCaching; }
+RWStructuredBuffer<HitPackedData> GetHitCachingBuffer() { return HitCaching; }
+
+void PackData(HitUnpackedData InData, out HitPackedData OutData)
+{
+    OutData.ProbePacked = (InData.ProbeIndex & 0xFFFF) |
+                          ((InData.RayIndex & 0xFF) << 16) |
+                          (InData.VolumeIndex & 0xFF) << 24;
+
+    OutData.PrimitivePacked = (InData.InstanceIndex & 0xFFF) | 
+                              ((InData.PrimitiveIndex & 0x3FF) << 12) | 
+                              ((InData.GeometryIndex & 0x3FF) << 22);
+
+    uint2 UBarycentrics = f32tof16(InData.Barycentrics);
+    OutData.Barycentrics = (UBarycentrics.x & 0xFFFF) | 
+                            ((UBarycentrics.y & 0xFFFF) << 16);
+
+    OutData.HitDistance = InData.HitDistance;
+}
+
+void UnpackData(HitPackedData InData, out HitUnpackedData OutData)
+{
+    OutData.ProbeIndex = InData.ProbePacked & 0xFFFF;    
+    OutData.RayIndex = (InData.ProbePacked >> 16) & 0xFF;
+    OutData.VolumeIndex = (InData.ProbePacked >> 24) & 0xFF;
+
+    OutData.InstanceIndex = InData.PrimitivePacked & 0xFFF;
+    OutData.PrimitiveIndex = (InData.PrimitivePacked >> 12) & 0x3FF;
+    OutData.GeometryIndex = (InData.PrimitivePacked >> 22) & 0x3FF;
+
+    uint2 UBarycentrics;
+    UBarycentrics.x = InData.Barycentrics & 0xFFFF;
+    UBarycentrics.y = (InData.Barycentrics >> 16) & 0xFFFF;
+    OutData.Barycentrics = f16tof32(UBarycentrics);
+
+    InData.HitDistance = OutData.HitDistance;
+}
 RWStructuredBuffer<float3>            GetRadianceCachingBuffer() { return RadianceCaching; }
 RWStructuredBuffer<RadianceCacheVisualization>            GetRadianceCachingVisualizationBuffer() { return RadianceCachingVisualization; }
 

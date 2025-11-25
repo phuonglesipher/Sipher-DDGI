@@ -1,41 +1,6 @@
 #ifndef INLINE_RAY_TRACING_COMMON_HLSL
 #define INLINE_RAY_TRACING_COMMON_HLSL
 
-void PackData(HitUnpackedData InData, out HitPackedData OutData)
-{
-    OutData.ProbePacked = (InData.ProbeIndex & 0xFFFF) |
-                          ((InData.RayIndex & 0xFF) << 16) |
-                          (InData.VolumeIndex & 0xFF) << 24;
-
-    OutData.PrimitivePacked = (InData.InstanceIndex & 0xFFF) | 
-                              ((InData.PrimitiveIndex & 0x3FF) << 12) | 
-                              ((InData.GeometryIndex & 0x3FF) << 22);
-
-    uint2 UBarycentrics = f32tof16(InData.Barycentrics);
-    OutData.Barycentrics = (UBarycentrics.x & 0xFFFF) | 
-                            ((UBarycentrics.y & 0xFFFF) << 16);
-
-    OutData.HitDistance = InData.HitDistance;
-}
-
-void UnpackData(HitPackedData InData, out HitUnpackedData OutData)
-{
-    OutData.ProbeIndex = InData.ProbePacked & 0xFFFF;    
-    OutData.RayIndex = (InData.ProbePacked >> 16) & 0xFF;
-    OutData.VolumeIndex = (InData.ProbePacked >> 24) & 0xFF;
-
-    OutData.InstanceIndex = InData.PrimitivePacked & 0xFFF;
-    OutData.PrimitiveIndex = (InData.PrimitivePacked >> 12) & 0x3FF;
-    OutData.GeometryIndex = (InData.PrimitivePacked >> 22) & 0x3FF;
-
-    uint2 UBarycentrics;
-    UBarycentrics.x = InData.Barycentrics & 0xFFFF;
-    UBarycentrics.y = (InData.Barycentrics >> 16) & 0xFFFF;
-    OutData.Barycentrics = f16tof32(UBarycentrics);
-
-    InData.HitDistance = OutData.HitDistance;
-}
-
 uint3 LoadIndices(uint meshIndex, uint primitiveIndex, GeometryData geometry)
 {
     uint address = geometry.indexByteAddress + (primitiveIndex * 3) * 4;  // 3 indices per primitive, 4 bytes for each index

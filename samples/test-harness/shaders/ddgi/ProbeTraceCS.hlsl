@@ -59,7 +59,7 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     // Get the ray data texture array
     RWTexture2DArray<float4> RayData = GetRWTex2DArray(ResourceIndices.rayDataUAVIndex);
     
-    RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> RQuery;
+    RayQuery<RAY_FLAG_NONE> RQuery;
     RQuery.TraceRayInline(SceneTLAS,
             0,
             0xFF,
@@ -84,15 +84,22 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
             return;
         }
     
-        // RWStructuredBuffer<HitCachingPayload> HitCachingBuffer = GetHitCachingBuffer();
-        // uint HashID = SpatialHashCascadeIndex(payload.worldPosition, GetCascadeCellRadius(), GetMaxCacheCellCount(), GetCascadeCount(), GetCascadeBaseDistance());
-        // HitCachingPayload NewPayload;
-        // NewPayload.payload = packedPayload;
-        // NewPayload.isActived = true;
-        // NewPayload.probeIndex = probeIndex;
-        // NewPayload.rayIndex = rayIndex;
-        // NewPayload.volumeIndex = volumeIndex;
-        // HitCachingBuffer[HashID] = NewPayload;
+        RWStructuredBuffer<HitPackedData> HitCachingBuffer = GetHitCachingBuffer();
+        float RayDistance = RQuery.CommittedRayT();
+        float3 HitWorldPosition = probeWorldPosition + probeRayDirection * RayDistance;
+        uint HashID = SpatialHashCascadeIndex(HitWorldPosition, GetCascadeCellRadius(), GetMaxCacheCellCount(), GetCascadeCount(), GetCascadeBaseDistance());
+        HitUnpackedData NewUnpackedData;
+        NewUnpackedData.ProbeIndex = ProbeIndex;
+        NewUnpackedData.RayIndex = RayIndex;
+        NewUnpackedData.VolumeIndex = VolumeIndex;
+        NewUnpackedData.PrimitiveIndex = RQuery.CommittedPrimitiveIndex();
+        NewUnpackedData.InstanceIndex = RQuery.CommittedInstanceIndex();
+        NewUnpackedData.GeometryIndex = RQuery.CommittedGeometryIndex();
+        NewUnpackedData.HitDistance = RayDistance;
+        NewUnpackedData.Barycentrics = RQuery.CommittedTriangleBarycentrics();
+        HitPackedData NewPackedData;
+        PackData(NewUnpackedData, NewPackedData);
+        HitCachingBuffer[HashID] = NewPackedData;
     }
     else
     {
