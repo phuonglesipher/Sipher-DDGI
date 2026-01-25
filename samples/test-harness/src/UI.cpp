@@ -696,6 +696,9 @@ namespace Graphics
                         ImGui::SameLine(); AddQuestionMark("Enable or disable shader execution reordering (RTX 4000 series)");
                     }
 
+                    ImGui::Checkbox("Use Inline Ray Tracing##pt", &config.pathTrace.useInlineRayTracing);
+                    ImGui::SameLine(); AddQuestionMark("Use inline ray tracing (RayQuery) compute shaders instead of traditional RT pipelines");
+
                     ImGui::DragFloat("##ptNormalBias", &config.pathTrace.rayNormalBias, 0.0001f, 0.f, 10.f, "Ray Normal Bias: %.4f");
                     AddHoverToolTip("A world-space distance along the surface normal, used to avoid self intersection");
 
@@ -750,6 +753,9 @@ namespace Graphics
                         ImGui::Checkbox("Shader Execution Reordering", &config.ddgi.shaderExecutionReordering);
                         ImGui::SameLine(); AddQuestionMark("Enable or disable shader execution reordering (RTX 4000 series)");
                     }
+
+                    ImGui::Checkbox("Use Inline Ray Tracing##ddgi", &config.ddgi.useInlineRayTracing);
+                    ImGui::SameLine(); AddQuestionMark("Use inline ray tracing (RayQuery) compute shaders instead of traditional RT pipelines for probe tracing");
 
                     ImGui::Checkbox("Show Indirect Lighting", &config.ddgi.showIndirect);
                     ImGui::SameLine(); AddQuestionMark("Show only the indirect lighting contribution. Press '2' on the keyboard for a shortcut.");
@@ -1130,6 +1136,9 @@ namespace Graphics
                 {
                     ImGui::Checkbox("Visualize", &config.rtao.visualize);
                     ImGui::SameLine(); AddQuestionMark("Toggles a visualization of the ray traced ambient occlusion result");
+
+                    ImGui::Checkbox("Use Inline Ray Tracing##rtao", &config.rtao.useInlineRayTracing);
+                    ImGui::SameLine(); AddQuestionMark("Use inline ray tracing (RayQuery) compute shaders instead of traditional RT pipelines");
 
                     ImGui::PushItemWidth(ImGui::GetWindowWidth());
 

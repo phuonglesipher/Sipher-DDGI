@@ -17,6 +17,7 @@ namespace Graphics
         namespace RTAO
         {
             const int RTAO_FILTER_BLOCK_SIZE = 8; // Block is NxN, 32 maximum
+            const int RTAO_TRACE_BLOCK_SIZE = 8; // Block is NxN for trace compute shader
 
             //----------------------------------------------------------------------------------------------------------
             // Private Functions
@@ -64,6 +65,7 @@ namespace Graphics
                 // Release existing shaders
                 resources.rtShaders.Release();
                 resources.filterCS.Release();
+                resources.traceCS.Release();
 
                 std::wstring root = std::wstring(vk.shaderCompiler.root.begin(), vk.shaderCompiler.root.end());
 
@@ -116,6 +118,14 @@ namespace Graphics
                 Shaders::AddDefine(resources.filterCS, L"BLOCK_SIZE", blockSize);
                 CHECK(Shaders::Compile(vk.shaderCompiler, resources.filterCS), "compile RTAO filter compute shader!\n", log);
 
+                // Load and compile the inline ray tracing trace compute shader
+                resources.traceCS.filepath = root + L"shaders/RTAOTraceCS.hlsl";
+                resources.traceCS.entryPoint = L"CS";
+                resources.traceCS.targetProfile = L"cs_6_6";
+                resources.traceCS.arguments = { L"-spirv", L"-D __spirv__", L"-fspv-target-env=vulkan1.2" };
+                Shaders::AddDefine(resources.traceCS, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE_RESOURCE_ARRAYS));
+                CHECK(Shaders::Compile(vk.shaderCompiler, resources.traceCS), "compile RTAO trace inline ray tracing compute shader!\n", log);
+
                 return true;
             }
 
@@ -142,14 +152,19 @@ namespace Graphics
                 // Release existing shader modules and pipelines
                 resources.rtShaderModules.Release(vk.device);
                 vkDestroyShaderModule(vk.device, resources.filterCSModule, nullptr);
+                vkDestroyShaderModule(vk.device, resources.traceCSModule, nullptr);
                 vkDestroyPipeline(vk.device, resources.rtPipeline, nullptr);
                 vkDestroyPipeline(vk.device, resources.filterPipeline, nullptr);
+                vkDestroyPipeline(vk.device, resources.tracePipeline, nullptr);
 
                 // Create the ray tracing pipeline shader modules
                 CHECK(CreateRayTracingShaderModules(vk.device, resources.rtShaders, resources.rtShaderModules), "create RTAO RT shader modules!\n", log);
 
                 // Create the filter compute shader module
                 CHECK(CreateShaderModule(vk.device, resources.filterCS, &resources.filterCSModule), "create RTAO Filter shader module!\n", log);
+
+                // Create the trace compute shader module
+                CHECK(CreateShaderModule(vk.device, resources.traceCS, &resources.traceCSModule), "create RTAO Trace CS shader module!\n", log);
 
                 // Create the ray tracing pipeline
                 CHECK(CreateRayTracingPipeline(vk.device, vkResources.pipelineLayout, resources.rtShaders, resources.rtShaderModules, &resources.rtPipeline), "create RTAO RT pipeline!\n", log);
@@ -161,6 +176,12 @@ namespace Graphics
                 CHECK(CreateComputePipeline(vk.device, vkResources.pipelineLayout, resources.filterCS, resources.filterCSModule, &resources.filterPipeline), "create RTAO Filter pipeline!\n", log);
             #ifdef GFX_NAME_OBJECTS
                 SetObjectName(vk.device, reinterpret_cast<uint64_t>(resources.filterPipeline), "RTAO Filter Pipeline", VK_OBJECT_TYPE_PIPELINE);
+            #endif
+
+                // Create the trace compute pipeline for inline ray tracing
+                CHECK(CreateComputePipeline(vk.device, vkResources.pipelineLayout, resources.traceCS, resources.traceCSModule, &resources.tracePipeline), "create RTAO Trace CS pipeline!\n", log);
+            #ifdef GFX_NAME_OBJECTS
+                SetObjectName(vk.device, reinterpret_cast<uint64_t>(resources.tracePipeline), "RTAO Trace CS Pipeline", VK_OBJECT_TYPE_PIPELINE);
             #endif
 
                 return true;
@@ -463,6 +484,7 @@ namespace Graphics
 
                 // RTAO constants
                 resources.enabled = config.rtao.enabled;
+                resources.useInlineRayTracing = config.rtao.useInlineRayTracing;
                 if (resources.enabled)
                 {
                     vkResources.constants.rtao.rayLength = config.rtao.rayLength;
@@ -497,7 +519,7 @@ namespace Graphics
             void Execute(Globals& vk, GlobalResources& vkResources, Resources& resources)
             {
             #ifdef GFX_PERF_MARKERS
-                AddPerfMarker(vk, GFX_PERF_MARKER_RED, "RTAO");
+                AddPerfMarker(vk, GFX_PERF_MARKER_RED, resources.useInlineRayTracing ? "RTAO (Inline RT)" : "RTAO");
             #endif
                 CPU_TIMESTAMP_BEGIN(resources.cpuStat);
                 if (resources.enabled)
@@ -510,36 +532,49 @@ namespace Graphics
                     offset += LightingConsts::GetAlignedSizeInBytes();
                     vkCmdPushConstants(vk.cmdBuffer[vk.frameIndex], vkResources.pipelineLayout, VK_SHADER_STAGE_ALL, offset, consts.rtao.GetSizeInBytes(), consts.rtao.GetData());
 
-                    // Bind the pipeline
-                    vkCmdBindPipeline(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, resources.rtPipeline);
-
-                    // Bind the descriptor set
-                    vkCmdBindDescriptorSets(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, vkResources.pipelineLayout, 0, 1, &resources.descriptorSet, 0, nullptr);
-
-                    // Describe the shader table
-                    VkStridedDeviceAddressRegionKHR raygenRegion = {};
-                    raygenRegion.deviceAddress = resources.shaderTableRGSStartAddress;
-                    raygenRegion.size = resources.shaderTableRecordSize;
-                    raygenRegion.stride = resources.shaderTableRecordSize;
-
-                    VkStridedDeviceAddressRegionKHR missRegion = {};
-                    missRegion.deviceAddress = resources.shaderTableMissTableStartAddress;
-                    missRegion.size = resources.shaderTableMissTableSize;
-                    missRegion.stride = resources.shaderTableRecordSize;
-
-                    VkStridedDeviceAddressRegionKHR hitRegion = {};
-                    hitRegion.deviceAddress = resources.shaderTableHitGroupTableStartAddress;
-                    hitRegion.size = resources.shaderTableHitGroupTableSize;
-                    hitRegion.stride = resources.shaderTableRecordSize;
-
-                    VkStridedDeviceAddressRegionKHR callableRegion = {};
-
-                    // Dispatch rays
                     GPU_TIMESTAMP_BEGIN(resources.gpuStat->GetGPUQueryBeginIndex());
-                    vkCmdTraceRaysKHR(vk.cmdBuffer[vk.frameIndex], &raygenRegion, &missRegion, &hitRegion, &callableRegion, vk.width, vk.height, 1);
+
+                    if (resources.useInlineRayTracing)
+                    {
+                        // Use compute shader with inline ray tracing for trace pass
+                        vkCmdBindPipeline(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_COMPUTE, resources.tracePipeline);
+                        vkCmdBindDescriptorSets(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_COMPUTE, vkResources.pipelineLayout, 0, 1, &resources.descriptorSet, 0, nullptr);
+
+                        uint32_t traceGroupsX = DivRoundUp(vk.width, RTAO_TRACE_BLOCK_SIZE);
+                        uint32_t traceGroupsY = DivRoundUp(vk.height, RTAO_TRACE_BLOCK_SIZE);
+                        vkCmdDispatch(vk.cmdBuffer[vk.frameIndex], traceGroupsX, traceGroupsY, 1);
+                    }
+                    else
+                    {
+                        // Use traditional ray tracing pipeline
+                        vkCmdBindPipeline(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, resources.rtPipeline);
+                        vkCmdBindDescriptorSets(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, vkResources.pipelineLayout, 0, 1, &resources.descriptorSet, 0, nullptr);
+
+                        // Describe the shader table
+                        VkStridedDeviceAddressRegionKHR raygenRegion = {};
+                        raygenRegion.deviceAddress = resources.shaderTableRGSStartAddress;
+                        raygenRegion.size = resources.shaderTableRecordSize;
+                        raygenRegion.stride = resources.shaderTableRecordSize;
+
+                        VkStridedDeviceAddressRegionKHR missRegion = {};
+                        missRegion.deviceAddress = resources.shaderTableMissTableStartAddress;
+                        missRegion.size = resources.shaderTableMissTableSize;
+                        missRegion.stride = resources.shaderTableRecordSize;
+
+                        VkStridedDeviceAddressRegionKHR hitRegion = {};
+                        hitRegion.deviceAddress = resources.shaderTableHitGroupTableStartAddress;
+                        hitRegion.size = resources.shaderTableHitGroupTableSize;
+                        hitRegion.stride = resources.shaderTableRecordSize;
+
+                        VkStridedDeviceAddressRegionKHR callableRegion = {};
+
+                        // Dispatch rays
+                        vkCmdTraceRaysKHR(vk.cmdBuffer[vk.frameIndex], &raygenRegion, &missRegion, &hitRegion, &callableRegion, vk.width, vk.height, 1);
+                    }
+
                     GPU_TIMESTAMP_END(resources.gpuStat->GetGPUQueryEndIndex());
 
-                    // Wait for the ray trace to finish
+                    // Wait for the trace pass to finish
                     VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
                     ImageBarrierDesc barrier = { VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
                     SetImageMemoryBarrier(vk.cmdBuffer[vk.frameIndex], resources.RTAORaw, barrier);
@@ -589,12 +624,15 @@ namespace Graphics
                 // Pipelines
                 vkDestroyPipeline(device, resources.rtPipeline, nullptr);
                 vkDestroyPipeline(device, resources.filterPipeline, nullptr);
+                vkDestroyPipeline(device, resources.tracePipeline, nullptr);
 
                 // Shaders
                 resources.rtShaderModules.Release(device);
                 resources.rtShaders.Release();
                 vkDestroyShaderModule(device, resources.filterCSModule, nullptr);
                 resources.filterCS.Release();
+                vkDestroyShaderModule(device, resources.traceCSModule, nullptr);
+                resources.traceCS.Release();
 
                 resources.shaderTableSize = 0;
                 resources.shaderTableRecordSize = 0;

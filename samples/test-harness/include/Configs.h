@@ -90,6 +90,7 @@ namespace Configs
         bool showIndirect = false;
         bool insertPerfMarkers = true;
         bool shaderExecutionReordering = false;
+        bool useInlineRayTracing = false;
         bool showWorldRadianceCache = false;
         bool showDirectRadianceCache = true;
         bool showIndirectRadianceCache = true;
@@ -134,6 +135,7 @@ namespace Configs
     {
         bool  enabled = true;
         bool  visualize = false;
+        bool  useInlineRayTracing = false;
         bool  reload = false;
         float rayLength = 1.f;
         float rayNormalBias = 0.0001f;
@@ -149,6 +151,7 @@ namespace Configs
         bool  antialiasing = false;
         bool  progressive = true;
         bool  shaderExecutionReordering = false;
+        bool  useInlineRayTracing = false;
         bool  reload = false;
         float rayNormalBias = 0.001f;
         float rayViewBias = 0.001f;

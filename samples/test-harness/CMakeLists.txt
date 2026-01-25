@@ -145,6 +145,7 @@ file(GLOB TEST_HARNESS_SHADER_INCLUDE
     "shaders/include/Common.hlsl"
     "shaders/include/Descriptors.hlsl"
     "shaders/include/Lighting.hlsl"
+    "shaders/include/InlineLighting.hlsl"
     "shaders/include/Platform.hlsl"
     "shaders/include/Random.hlsl"
     "shaders/include/RayTracing.hlsl"
@@ -164,22 +165,31 @@ file(GLOB TEST_HARNESS_SHADER_SOURCE
     "shaders/IndirectCS.hlsl"
     "shaders/Miss.hlsl"
     "shaders/PathTraceRGS.hlsl"
+    "shaders/PathTraceCS.hlsl"
     "shaders/RTAOFilterCS.hlsl"
     "shaders/RTAOTraceRGS.hlsl"
+    "shaders/RTAOTraceCS.hlsl"
 )
 
 file(GLOB TEST_HARNESS_DDGI_SHADER_SOURCE
-    "shaders/ddgi/ProbeTraceRGS.hlsl",
-    "shaders/ddgi/ProbeTraceCS.hlsl",
+    "shaders/ddgi/ProbeTraceRGS.hlsl"
+    "shaders/ddgi/ProbeTraceCS.hlsl"
     "shaders/ddgi/RadianceCacheRGS.hlsl"
+    "shaders/ddgi/RadianceCacheCS.hlsl"
 )
 
 file(GLOB TEST_HARNESS_DDGIVIS_SHADER_SOURCE
     "shaders/ddgi/visualizations/ProbesRGS.hlsl"
+    "shaders/ddgi/visualizations/ProbesCS.hlsl"
     "shaders/ddgi/visualizations/ProbesCHS.hlsl"
     "shaders/ddgi/visualizations/ProbesMiss.hlsl"
     "shaders/ddgi/visualizations/ProbesUpdateCS.hlsl"
     "shaders/ddgi/visualizations/VolumeTexturesCS.hlsl"
+)
+
+file(GLOB TEST_HARNESS_TEST_SHADER_SOURCE
+    "shaders/tests/InlineRayTracingUnitTest.hlsl"
+    "shaders/tests/InlineRayTracingSelfTest.hlsl"
 )
 
 ###############################################################
@@ -229,6 +239,7 @@ set_source_files_properties(${TEST_HARNESS_SHADER_INCLUDE} PROPERTIES VS_TOOL_OV
 set_source_files_properties(${TEST_HARNESS_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
 set_source_files_properties(${TEST_HARNESS_DDGI_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
 set_source_files_properties(${TEST_HARNESS_DDGIVIS_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
+set_source_files_properties(${TEST_HARNESS_TEST_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
 
 # Test Harness options
 option(RTXGISAMPLES_GFX_NAME_OBJECTS "Enable naming of graphics objects (for debugging)" ON)
@@ -344,6 +355,7 @@ if(RTXGI_API_D3D12_ENABLE)
         ${TEST_HARNESS_SHADER_SOURCE}
         ${TEST_HARNESS_DDGI_SHADER_SOURCE}
         ${TEST_HARNESS_DDGIVIS_SHADER_SOURCE}
+        ${TEST_HARNESS_TEST_SHADER_SOURCE}
         ${THIRD_PARTY_DIRECTXTEX_INCLUDE}
         ${THIRD_PARTY_DIRECTXTEX_SOURCE}
         ${THIRD_PARTY_DIRECTXTEX_GPU_COMPRESS_SOURCE}
@@ -421,6 +433,7 @@ if(RTXGI_API_VULKAN_ENABLE)
             ${TEST_HARNESS_SHADER_SOURCE}
             ${TEST_HARNESS_DDGI_SHADER_SOURCE}
             ${TEST_HARNESS_DDGIVIS_SHADER_SOURCE}
+            ${TEST_HARNESS_TEST_SHADER_SOURCE}
             ${THIRD_PARTY_DIRECTXTEX_INCLUDE}
             ${THIRD_PARTY_DIRECTXTEX_SOURCE}
             ${THIRD_PARTY_DIRECTXTEX_GPU_COMPRESS_SOURCE}
@@ -448,6 +461,7 @@ if(RTXGI_API_VULKAN_ENABLE)
         source_group("Shaders/Include" FILES ${TEST_HARNESS_SHADER_INCLUDE})
         source_group("Shaders/DDGI" FILES ${TEST_HARNESS_DDGI_SHADER_SOURCE})
         source_group("Shaders/DDGI/Visualizations" FILES ${TEST_HARNESS_DDGIVIS_SHADER_SOURCE})
+        source_group("Shaders/Tests" FILES ${TEST_HARNESS_TEST_SHADER_SOURCE})
 
     elseif(UNIX AND NOT APPLE)
 
@@ -472,6 +486,7 @@ if(RTXGI_API_VULKAN_ENABLE)
             ${TEST_HARNESS_SHADER_SOURCE}
             ${TEST_HARNESS_DDGI_SHADER_SOURCE}
             ${TEST_HARNESS_DDGIVIS_SHADER_SOURCE}
+            ${TEST_HARNESS_TEST_SHADER_SOURCE}
             ${THIRD_PARTY_DIRECTXTEX_INCLUDE}
             ${THIRD_PARTY_DIRECTXTEX_SOURCE}
             ${THIRD_PARTY_IMGUI_SOURCE}

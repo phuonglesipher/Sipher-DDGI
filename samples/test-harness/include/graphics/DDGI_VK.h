@@ -29,10 +29,12 @@ namespace Graphics
                 // Shaders
                 Shaders::ShaderRTPipeline       rtShaders;
                 Shaders::ShaderProgram          indirectCS;
+                Shaders::ShaderProgram          probeTraceCS;
 
                 // Shader Modules
                 RTShaderModules                 rtShaderModules;
                 VkShaderModule                  indirectShaderModule = nullptr;
+                VkShaderModule                  probeTraceCSModule = nullptr;
 
                 // Ray Tracing
                 VkBuffer                        shaderTable = nullptr;
@@ -43,6 +45,8 @@ namespace Graphics
                 VkDescriptorSet                 descriptorSet = nullptr;
                 VkPipeline                      rtPipeline = nullptr;
                 VkPipeline                      indirectPipeline = nullptr;
+                VkPipeline                      probeTracePipeline = nullptr;
+                bool                            useInlineRayTracing = false;
 
                 uint32_t                        shaderTableSize = 0;
                 uint32_t                        shaderTableRecordSize = 0;

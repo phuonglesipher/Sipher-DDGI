@@ -28,6 +28,7 @@ namespace Graphics
                 VkDeviceMemory                 RTAORawMemory = nullptr;
                 VkImageView                    RTAORawView = nullptr;
 
+                // Ray Tracing resources
                 VkBuffer                       shaderTable = nullptr;
                 VkBuffer                       shaderTableUpload = nullptr;
                 VkDeviceMemory                 shaderTableMemory = nullptr;
@@ -50,6 +51,12 @@ namespace Graphics
                 VkDeviceAddress                shaderTableRGSStartAddress = 0;
                 VkDeviceAddress                shaderTableMissTableStartAddress = 0;
                 VkDeviceAddress                shaderTableHitGroupTableStartAddress = 0;
+
+                // Compute shader (inline ray tracing) resources for trace pass
+                Shaders::ShaderProgram         traceCS;
+                VkShaderModule                 traceCSModule = nullptr;
+                VkPipeline                     tracePipeline = nullptr;
+                bool                           useInlineRayTracing = false;
 
                 Instrumentation::Stat*         cpuStat = nullptr;
                 Instrumentation::Stat*         gpuStat = nullptr;

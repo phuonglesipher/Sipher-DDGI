@@ -136,6 +136,7 @@ StructuredBuffer<DDGIVolumeDescGPUPacked> GetDDGIVolumeConstants(uint index) { r
 StructuredBuffer<DDGIVolumeResourceIndices> GetDDGIVolumeResourceIndices(uint index) { return DDGIVolumeBindless; }
 
 RWStructuredBuffer<TLASInstance> GetDDGIProbeVisTLASInstances() { return RWTLASInstances; }
+StructuredBuffer<TLASInstance> GetTLASInstances() { return TLASInstances; }
 
 RWStructuredBuffer<HitPackedData> GetHitCachingBuffer() { return HitCaching; }
 

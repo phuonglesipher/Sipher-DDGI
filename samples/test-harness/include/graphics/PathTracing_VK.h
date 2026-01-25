@@ -28,6 +28,7 @@ namespace Graphics
                 VkDeviceMemory                 PTAccumulationMemory = nullptr;
                 VkImageView                    PTAccumulationView = nullptr;
 
+                // Ray Tracing resources
                 VkBuffer                       shaderTable = nullptr;
                 VkBuffer                       shaderTableUpload = nullptr;
                 VkDeviceMemory                 shaderTableMemory = nullptr;
@@ -46,6 +47,12 @@ namespace Graphics
                 VkDeviceAddress                shaderTableRGSStartAddress = 0;
                 VkDeviceAddress                shaderTableMissTableStartAddress = 0;
                 VkDeviceAddress                shaderTableHitGroupTableStartAddress = 0;
+
+                // Compute shader (inline ray tracing) resources
+                Shaders::ShaderProgram         csShader;
+                VkShaderModule                 csModule = nullptr;
+                VkPipeline                     csPipeline = nullptr;
+                bool                           useInlineRayTracing = false;
 
                 Instrumentation::Stat*         cpuStat = nullptr;
                 Instrumentation::Stat*         gpuStat = nullptr;

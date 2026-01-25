@@ -890,6 +890,7 @@ namespace Graphics
                 // Release existing shaders
                 resources.rtShaders.Release();
                 resources.indirectCS.Release();
+                resources.probeTraceCS.Release();
 
                 std::wstring root = std::wstring(vk.shaderCompiler.root.begin(), vk.shaderCompiler.root.end());
 
@@ -972,6 +973,26 @@ namespace Graphics
                     CHECK(Shaders::Compile(vk.shaderCompiler, resources.indirectCS), "compile indirect lighting compute shader!\n", log);
                 }
 
+                // Load and compile the probe trace inline ray tracing compute shader
+                {
+                    std::wstring shaderPath = root + L"shaders/ddgi/ProbeTraceCS.hlsl";
+                    resources.probeTraceCS.filepath = shaderPath.c_str();
+                    resources.probeTraceCS.entryPoint = L"CS";
+                    resources.probeTraceCS.targetProfile = L"cs_6_6";
+                    resources.probeTraceCS.arguments = { L"-spirv", L"-D __spirv__", L"-fspv-target-env=vulkan1.2" };
+
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_TYPE", L"2");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_STRUCT_NAME", L"GlobalConstants");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_VARIABLE_NAME", L"GlobalConst");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_FIELD_DDGI_VOLUME_INDEX_NAME", L"ddgi_volumeIndex");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_FIELD_DDGI_REDUCTION_INPUT_SIZE_X_NAME", L"ddgi_reductionInputSizeX");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_FIELD_DDGI_REDUCTION_INPUT_SIZE_Y_NAME", L"ddgi_reductionInputSizeY");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_PUSH_CONSTS_FIELD_DDGI_REDUCTION_INPUT_SIZE_Z_NAME", L"ddgi_reductionInputSizeZ");
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE_RESOURCE_ARRAYS));
+                    Shaders::AddDefine(resources.probeTraceCS, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+                    CHECK(Shaders::Compile(vk.shaderCompiler, resources.probeTraceCS), "compile DDGI probe trace inline ray tracing compute shader!\n", log);
+                }
+
                 return true;
             }
 
@@ -997,14 +1018,19 @@ namespace Graphics
                 // Release existing shader modules and pipeline
                 resources.rtShaderModules.Release(vk.device);
                 vkDestroyShaderModule(vk.device, resources.indirectShaderModule, nullptr);
+                vkDestroyShaderModule(vk.device, resources.probeTraceCSModule, nullptr);
                 vkDestroyPipeline(vk.device, resources.rtPipeline, nullptr);
                 vkDestroyPipeline(vk.device, resources.indirectPipeline, nullptr);
+                vkDestroyPipeline(vk.device, resources.probeTracePipeline, nullptr);
 
                 // Create the RT pipeline shader modules
                 CHECK(CreateRayTracingShaderModules(vk.device, resources.rtShaders, resources.rtShaderModules), "create DDGI RT shader modules!\n", log);
 
                 // Create the indirect lighting shader module
                 CHECK(CreateShaderModule(vk.device, resources.indirectCS, &resources.indirectShaderModule), "create DDGI indirect lighting shader module!\n", log);
+
+                // Create the probe trace compute shader module
+                CHECK(CreateShaderModule(vk.device, resources.probeTraceCS, &resources.probeTraceCSModule), "create DDGI probe trace CS shader module!\n", log);
 
                 // Create the RT pipeline
                 CHECK(CreateRayTracingPipeline(
@@ -1027,6 +1053,17 @@ namespace Graphics
                     &resources.indirectPipeline), "create indirect lighting PSO!\n", log);
             #ifdef GFX_NAME_OBJECTS
                 SetObjectName(vk.device, reinterpret_cast<uint64_t>(resources.indirectPipeline), "DDGI Indirect Lighting Pipeline", VK_OBJECT_TYPE_PIPELINE);
+            #endif
+
+                // Create the probe trace compute pipeline for inline ray tracing
+                CHECK(CreateComputePipeline(
+                    vk.device,
+                    vkResources.pipelineLayout,
+                    resources.probeTraceCS,
+                    resources.probeTraceCSModule,
+                    &resources.probeTracePipeline), "create DDGI probe trace CS pipeline!\n", log);
+            #ifdef GFX_NAME_OBJECTS
+                SetObjectName(vk.device, reinterpret_cast<uint64_t>(resources.probeTracePipeline), "DDGI Probe Trace CS Pipeline", VK_OBJECT_TYPE_PIPELINE);
             #endif
 
                 return true;
@@ -1359,7 +1396,7 @@ namespace Graphics
             void RayTraceVolumes(Globals& vk, GlobalResources& vkResources, Resources& resources)
             {
             #ifdef GFX_PERF_MARKERS
-                AddPerfMarker(vk, GFX_PERF_MARKER_GREEN, "Ray Trace DDGIVolumes");
+                AddPerfMarker(vk, GFX_PERF_MARKER_GREEN, resources.useInlineRayTracing ? "Trace DDGIVolumes (Inline RT)" : "Ray Trace DDGIVolumes");
             #endif
 
                 // Update the push constants
@@ -1371,13 +1408,20 @@ namespace Graphics
                 offset += PathTraceConsts::GetAlignedSizeInBytes();
                 vkCmdPushConstants(vk.cmdBuffer[vk.frameIndex], vkResources.pipelineLayout, VK_SHADER_STAGE_ALL, offset, LightingConsts::GetAlignedSizeInBytes(), consts.lights.GetData());
 
-                // Bind the descriptor set
-                vkCmdBindDescriptorSets(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, vkResources.pipelineLayout, 0, 1, &resources.descriptorSet, 0, nullptr);
+                if (resources.useInlineRayTracing)
+                {
+                    // Use compute shader with inline ray tracing
+                    vkCmdBindDescriptorSets(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_COMPUTE, vkResources.pipelineLayout, 0, 1, &resources.descriptorSet, 0, nullptr);
+                    vkCmdBindPipeline(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_COMPUTE, resources.probeTracePipeline);
+                }
+                else
+                {
+                    // Use traditional ray tracing pipeline
+                    vkCmdBindDescriptorSets(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, vkResources.pipelineLayout, 0, 1, &resources.descriptorSet, 0, nullptr);
+                    vkCmdBindPipeline(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, resources.rtPipeline);
+                }
 
-                // Bind the pipeline
-                vkCmdBindPipeline(vk.cmdBuffer[vk.frameIndex], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, resources.rtPipeline);
-
-                // Describe the shader table
+                // Describe the shader table (only needed for RT path)
                 VkStridedDeviceAddressRegionKHR raygenRegion = {};
                 raygenRegion.deviceAddress = resources.shaderTableRGSStartAddress;
                 raygenRegion.size = resources.shaderTableRecordSize;
@@ -1419,29 +1463,42 @@ namespace Graphics
                     uint32_t width, height, depth;
                     volume->GetRayDispatchDimensions(width, height, depth);
 
-                    // Trace probe rays
-                    vkCmdTraceRaysKHR(
-                        vk.cmdBuffer[vk.frameIndex],
-                        &raygenRegion,
-                        &missRegion,
-                        &hitRegion,
-                        &callableRegion,
-                        width,
-                        height,
-                        depth);
+                    if (resources.useInlineRayTracing)
+                    {
+                        // Dispatch compute shader with inline ray tracing
+                        // For compute shader, we dispatch thread groups to match probe ray count
+                        uint32_t groupsX = DivRoundUp(width, 8u);
+                        uint32_t groupsY = DivRoundUp(height, 8u);
+                        vkCmdDispatch(vk.cmdBuffer[vk.frameIndex], groupsX, groupsY, depth);
+                    }
+                    else
+                    {
+                        // Trace probe rays using traditional ray tracing
+                        vkCmdTraceRaysKHR(
+                            vk.cmdBuffer[vk.frameIndex],
+                            &raygenRegion,
+                            &missRegion,
+                            &hitRegion,
+                            &callableRegion,
+                            width,
+                            height,
+                            depth);
+                    }
 
                     // Barrier(s)
                     barrier.image = volume->GetProbeRayData();
                     barriers.push_back(barrier);
                 }
 
-                // Wait for the ray traces to complete
+                // Wait for the ray traces/compute to complete
                 if (!barriers.empty())
                 {
+                    VkPipelineStageFlags srcStage = resources.useInlineRayTracing ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+                    VkPipelineStageFlags dstStage = resources.useInlineRayTracing ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
                     vkCmdPipelineBarrier(
                         vk.cmdBuffer[vk.frameIndex],
-                        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-                        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+                        srcStage,
+                        dstStage,
                         0,
                         0, nullptr,
                         0, nullptr,
@@ -1600,6 +1657,7 @@ namespace Graphics
                 CPU_TIMESTAMP_BEGIN(resources.cpuStat);
 
                 resources.enabled = config.ddgi.enabled;
+                resources.useInlineRayTracing = config.ddgi.useInlineRayTracing;
                 if (resources.enabled)
                 {
                     // Path Trace constants
@@ -1726,12 +1784,15 @@ namespace Graphics
                 // Pipelines
                 vkDestroyPipeline(device, resources.rtPipeline, nullptr);
                 vkDestroyPipeline(device, resources.indirectPipeline, nullptr);
+                vkDestroyPipeline(device, resources.probeTracePipeline, nullptr);
 
                 // Shaders
                 resources.rtShaderModules.Release(device);
                 resources.rtShaders.Release();
                 vkDestroyShaderModule(device, resources.indirectShaderModule, nullptr);
                 resources.indirectCS.Release();
+                vkDestroyShaderModule(device, resources.probeTraceCSModule, nullptr);
+                resources.probeTraceCS.Release();
 
                 resources.shaderTableSize = 0;
                 resources.shaderTableRecordSize = 0;
