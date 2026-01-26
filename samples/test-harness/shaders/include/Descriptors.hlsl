@@ -172,7 +172,7 @@ void UnpackData(HitPackedData InData, out HitUnpackedData OutData)
     UBarycentrics.y = (InData.Barycentrics >> 16) & 0xFFFF;
     OutData.Barycentrics = f16tof32(UBarycentrics);
 
-    InData.HitDistance = OutData.HitDistance;
+    OutData.HitDistance = InData.HitDistance;
 }
 RWStructuredBuffer<float3>            GetRadianceCachingBuffer() { return RadianceCaching; }
 RWStructuredBuffer<RadianceCacheVisualization>            GetRadianceCachingVisualizationBuffer() { return RadianceCachingVisualization; }
