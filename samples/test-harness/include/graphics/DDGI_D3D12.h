@@ -64,25 +64,13 @@ namespace Graphics
                 ID3D12Resource*              volumeConstantsSTBUpload = nullptr;
                 UINT                         volumeConstantsSTBSizeInBytes = 0;
 
-                Shaders::ShaderRTPipeline    RadianceCacheRTShaders;
+                // Radiance Cache (Inline Ray Tracing - Compute Shader)
+                Shaders::ShaderProgram       radianceCacheCS;
+                ID3D12PipelineState*         radianceCachePSO = nullptr;
                 ID3D12Resource*              HitCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingVisualizationResource = nullptr;
-                ID3D12StateObject*           RadianceCachingPSO = nullptr;
-                ID3D12StateObjectProperties* RadianceCachingPSOInfo = nullptr;
-                // Ray Tracing
-                ID3D12Resource*              RadianceCacheShaderTable = nullptr;
-                ID3D12Resource*              RadianceCacheShaderTableUpload = nullptr;
-                // Shader Table
-                UINT                         RadianceCacheShaderTableSize = 0;
-                UINT                         RadianceCacheShaderTableRecordSize = 0;
-                UINT                         RadianceCacheShaderTableMissTableSize = 0;
-                UINT                         RadianceCacheShaderTableHitGroupTableSize = 0;
                 UINT                         CascadeCellNum;
-
-                D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableRGSStartAddress = 0;
-                D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableMissTableStartAddress = 0;
-                D3D12_GPU_VIRTUAL_ADDRESS    RadianceCacheShaderTableHitGroupTableStartAddress = 0;
 
                 // Variability Tracking
                 std::vector<uint32_t>        numVolumeVariabilitySamples;
