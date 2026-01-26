@@ -110,6 +110,16 @@ namespace Graphics
         float3 IndirectRadiance;
     };
 
+    // Radiance cache entry with temporal accumulation support
+    // Based on NVIDIA SHaRC and AMD GI-1.0 techniques
+    struct RadianceCacheEntry
+    {
+        float3 AccumulatedRadiance;  // Sum of radiance samples
+        float  SampleCount;          // Number of accumulated samples
+        uint   LastUpdateFrame;      // Frame number of last update (for staleness detection)
+        uint   Padding;              // Alignment padding
+    };
+
     struct ProbeVisualizationPayload
     {
         float  hitT;

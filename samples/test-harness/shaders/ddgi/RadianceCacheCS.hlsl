@@ -21,6 +21,34 @@
 #define RADIANCE_CACHE_SAMPLE_COUNT 8
 #endif
 
+// ============================================================================
+// Temporal Stability Parameters (idTech8/SHaRC-inspired)
+// ============================================================================
+// The approach: linear accumulation for first N samples, then exponential blend
+// This provides fast convergence initially, then temporal stability
+//
+// MAX_ACCUMULATED_SAMPLES: After this many samples, switch to exponential blend
+// - Higher = more stable but slower to react to lighting changes
+// - Lower = faster reaction but more noise
+// - idTech8/Bevy Solari uses 32 samples
+#ifndef RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES
+#define RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES 32.0f
+#endif
+
+// CHANGE_THRESHOLD: Relative luminance change that triggers "reset"
+// - When lighting changes significantly, reset to linear accumulation
+// - 1.0 = 100% change considered significant (more stable)
+#ifndef RADIANCE_CACHE_CHANGE_THRESHOLD
+#define RADIANCE_CACHE_CHANGE_THRESHOLD 1.0f
+#endif
+
+// FIXED_BLEND_MODE: Use fixed blend factor instead of adaptive
+// - 1 = use fixed blend of 1/MAX_ACCUMULATED_SAMPLES (most stable)
+// - 0 = use adaptive blend based on luminance change
+#ifndef RADIANCE_CACHE_FIXED_BLEND_MODE
+#define RADIANCE_CACHE_FIXED_BLEND_MODE 1
+#endif
+
 #include "../include/Descriptors.hlsl"
 #include "../include/InlineLighting.hlsl"
 #include "../include/InlineRayTracingCommon.hlsl"
@@ -44,7 +72,10 @@ float3 EvaluateIndirectRadianceInline(float3 Albedo, float3 WorldPosition, float
 
     for (uint Idx = 0; Idx < SampleCount; Idx++)
     {
-        uint Seed = Idx * 10;
+        // Fully deterministic seed - no frame number dependency
+        // Each cache cell always samples the exact same directions for stability
+        uint Seed = asuint(WorldPosition.x) ^ asuint(WorldPosition.y) ^ asuint(WorldPosition.z);
+        Seed = WangHash(Seed + Idx * 17);
         float3 SamplingDirection = GetRandomDirectionOnHemisphere(WorldNormal, Seed);
 
         RayDesc ray;
@@ -174,17 +205,67 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     // Direct Lighting and Shadowing using inline ray tracing
     float3 DirectLight = DirectDiffuseLightingInline(payload, GetGlobalConst(pt, rayNormalBias), GetGlobalConst(pt, rayViewBias), SceneTLAS, Lights);
 
-    RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
-    RadianceCachingBuffer[HitIndex] = DirectLight;
-
     // Indirect lighting using inline ray tracing
     float3 IndirectLight = EvaluateIndirectRadianceInline(payload.albedo, payload.worldPosition, payload.shadingNormal, SceneTLAS, RADIANCE_CACHE_SAMPLE_COUNT);
-    RadianceCachingBuffer[HitIndex] += IndirectLight;
 
-    // Store visualization data
+    // Compute new radiance for this frame
+    float3 NewRadiance = DirectLight + IndirectLight;
+
+    // ============================================================================
+    // Hybrid Linear/Exponential Accumulation (idTech8/SHaRC-inspired)
+    //
+    // Phase 1 (Linear): blend = 1/N where N is sample count (fast convergence)
+    // Phase 2 (Exponential): blend = 1/MAX_SAMPLES (temporal stability)
+    //
+    // Without explicit sample count storage, we estimate effective sample count
+    // from luminance stability. When scene changes significantly, we "reset"
+    // to linear accumulation.
+    // ============================================================================
+    RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
+    float3 OldRadiance = RadianceCachingBuffer[HitIndex];
+
+    // Compute luminance for stability detection
+    float OldLuminance = dot(OldRadiance, float3(0.299f, 0.587f, 0.114f));
+    float NewLuminance = dot(NewRadiance, float3(0.299f, 0.587f, 0.114f));
+
+    float BlendFactor;
+
+#if RADIANCE_CACHE_FIXED_BLEND_MODE
+    // Fixed blend mode: always use 1/MAX_SAMPLES for maximum stability
+    // This is the "converged" state - very slow adaptation but no flickering
+    BlendFactor = 1.0f / RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES;
+#else
+    // Adaptive mode: estimate effective sample count from luminance stability
+    float RelativeChange = abs(NewLuminance - OldLuminance) / max(OldLuminance, 0.001f);
+
+    // - High change (>threshold) → low sample count → high blend (linear phase)
+    // - Low change → high sample count → low blend (exponential phase)
+    float StabilityFactor = saturate(1.0f - RelativeChange / RADIANCE_CACHE_CHANGE_THRESHOLD);
+    float EffectiveSampleCount = lerp(1.0f, RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES, StabilityFactor);
+
+    // Blend factor: 1/N mimics linear accumulation, capped at 1/MAX for exponential phase
+    BlendFactor = 1.0f / EffectiveSampleCount;
+#endif
+
+    // For uninitialized cells (near-zero luminance), use new value directly
+    if (OldLuminance < 0.0001f)
+    {
+        BlendFactor = 1.0f;
+    }
+
+    // Blend with history
+    float3 FinalRadiance = lerp(OldRadiance, NewRadiance, BlendFactor);
+    RadianceCachingBuffer[HitIndex] = FinalRadiance;
+
+    // ============================================================================
+    // Visualization with same hybrid blending
+    // ============================================================================
     RWStructuredBuffer<RadianceCacheVisualization> IndirectRadianceCachingBuffer = GetRadianceCachingVisualizationBuffer();
-    IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = DirectLight;
-    IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = IndirectLight;
+    float3 OldDirectRadiance = IndirectRadianceCachingBuffer[HitIndex].DirectRadiance;
+    float3 OldIndirectRadiance = IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance;
+
+    IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = lerp(OldDirectRadiance, DirectLight, BlendFactor);
+    IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = lerp(OldIndirectRadiance, IndirectLight, BlendFactor);
 
     // Store radiance to DDGI ray data
     uint VolumeIndex = hitData.VolumeIndex;
