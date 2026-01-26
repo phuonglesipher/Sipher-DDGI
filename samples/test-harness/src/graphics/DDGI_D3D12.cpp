@@ -766,6 +766,13 @@ namespace Graphics
                 resources.RadianceCachingVisualizationResource->SetName(L"Radiance Caching Visualization Structured Buffer");
 #endif
 
+                // Create SHaRC-style atomic accumulation buffer (uint4: RGB scaled radiance + sample count)
+                desc = { sizeof(uint4) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+                CHECK(CreateBuffer(d3d, desc, &resources.RadianceCacheAccumulationResource), "create radiance cache accumulation buffer!\n", log);
+#ifdef GFX_NAME_OBJECTS
+                resources.RadianceCacheAccumulationResource->SetName(L"Radiance Cache Accumulation Buffer (SHaRC-style)");
+#endif
+
             #if !RTXGI_DDGI_RESOURCE_MANAGEMENT
                 // Add the constants structured buffer SRV to the descriptor heap
                 D3D12_UNORDERED_ACCESS_VIEW_DESC uavdesc = {};
@@ -786,6 +793,17 @@ namespace Graphics
                 uavdesc.Buffer.StructureByteStride = sizeof(RadianceCacheVisualization);
                 handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING_VISUALIZATION * d3dResources.srvDescHeapEntrySize);
                 d3d.device->CreateUnorderedAccessView(resources.RadianceCachingVisualizationResource, nullptr, &uavdesc, handle);
+
+                // UAV for SHaRC-style accumulation buffer (RWByteAddressBuffer for atomics)
+                D3D12_UNORDERED_ACCESS_VIEW_DESC rawUavDesc = {};
+                rawUavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+                rawUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+                rawUavDesc.Buffer.FirstElement = 0;
+                rawUavDesc.Buffer.NumElements = cachingCount * 4; // 4 uints per entry
+                rawUavDesc.Buffer.StructureByteStride = 0;
+                rawUavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+                handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_ACCUMULATION * d3dResources.srvDescHeapEntrySize);
+                d3d.device->CreateUnorderedAccessView(resources.RadianceCacheAccumulationResource, nullptr, &rawUavDesc, handle);
             #endif
 
                 return true;
@@ -1123,10 +1141,19 @@ namespace Graphics
                 barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
                 //d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
-                
+
                 float ClearValue[4] = {0.0f, 0.0f, 0.0f, 0.0f};
                 d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewFloat(GPUHandle, CPUHandle, resources.RadianceCachingResource, ClearValue, 0, nullptr);
-                
+
+                // Also clear the SHaRC-style accumulation buffer (uint4)
+                D3D12_CPU_DESCRIPTOR_HANDLE AccumCPUHandle;
+                AccumCPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_ACCUMULATION * d3dResources.srvDescHeapEntrySize);
+                D3D12_GPU_DESCRIPTOR_HANDLE AccumGPUHandle;
+                AccumGPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_ACCUMULATION * d3dResources.srvDescHeapEntrySize);
+
+                UINT ClearValueUint[4] = {0, 0, 0, 0};
+                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewUint(AccumGPUHandle, AccumCPUHandle, resources.RadianceCacheAccumulationResource, ClearValueUint, 0, nullptr);
+
                 d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
             }
 
@@ -1633,6 +1660,7 @@ namespace Graphics
                 SAFE_RELEASE(resources.HitCachingResource);
                 SAFE_RELEASE(resources.RadianceCachingResource);
                 SAFE_RELEASE(resources.RadianceCachingVisualizationResource);
+                SAFE_RELEASE(resources.RadianceCacheAccumulationResource);
 
                 // Release volumes
                 for (size_t volumeIndex = 0; volumeIndex < resources.volumes.size(); volumeIndex++)

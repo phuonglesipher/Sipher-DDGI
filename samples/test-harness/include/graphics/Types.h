@@ -120,6 +120,20 @@ namespace Graphics
         uint   Padding;              // Alignment padding
     };
 
+    // SHaRC-style accumulation data for atomic operations
+    // Radiance is stored as scaled integers for InterlockedAdd
+    struct RadianceCacheAccumulation
+    {
+        uint4 data;  // x,y,z = scaled radiance (RGB), w = sample count
+    };
+
+    // Hash entry for collision detection (SHaRC-style)
+    struct RadianceCacheHashEntry
+    {
+        uint hashKey;      // Primary hash for lookup
+        uint checksum;     // Secondary hash for collision detection
+    };
+
     struct ProbeVisualizationPayload
     {
         float  hitT;

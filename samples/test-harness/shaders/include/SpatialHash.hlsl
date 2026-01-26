@@ -20,11 +20,19 @@ int3 GridCoord(float3 P, float cellSize)
 uint SpatialHash_H(float3 P, float cellSize)
 {
     int3 g = GridCoord(P, cellSize);
-    uint hx = WangHash((uint)g.x);
-    uint hy = WangHash((uint)g.y);
-    uint hz = WangHash((uint)g.z);
 
-    return hx + hy + hz;
+    // Better hash combining using PCG-style mixing (idTech8/SHaRC approach)
+    // Avoids collisions from simple addition (e.g., (1,2,3) vs (3,2,1))
+    uint h = 0x811c9dc5u; // FNV offset basis
+    h ^= (uint)g.x;
+    h *= 0x01000193u; // FNV prime
+    h ^= (uint)g.y;
+    h *= 0x01000193u;
+    h ^= (uint)g.z;
+    h *= 0x01000193u;
+
+    // Final mixing
+    return WangHash(h);
 }
 
 uint SpatialHash_Checksum(float3 P, float cellSize)
@@ -71,6 +79,22 @@ uint SpatialHashCascadeIndex(float3 P, float BaseCellSize, uint CellNum, uint Ca
     float CascadeIndex = GetCascadeIndex(P, CascadeNum, CascadeDistance);
     float CellSize = CalculateCascadeCellSize(CascadeIndex, BaseCellSize);
     return SpatialHashIndex(P, CellSize, CellNum) + CascadeIndex * CellNum;
+}
+
+// Get both hash index and checksum for collision detection (SHaRC-style)
+void SpatialHashCascadeIndexWithChecksum(
+    float3 P,
+    float BaseCellSize,
+    uint CellNum,
+    uint CascadeNum,
+    float CascadeDistance,
+    out uint HashIndex,
+    out uint Checksum)
+{
+    float CascadeIndex = GetCascadeIndex(P, CascadeNum, CascadeDistance);
+    float CellSize = CalculateCascadeCellSize(CascadeIndex, BaseCellSize);
+    HashIndex = SpatialHashIndex(P, CellSize, CellNum) + CascadeIndex * CellNum;
+    Checksum = SpatialHash_Checksum(P, CellSize);
 }
 
 float3 GetSpatialHashVisualColor(uint Hash)

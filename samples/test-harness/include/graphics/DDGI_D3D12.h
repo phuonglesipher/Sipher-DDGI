@@ -70,6 +70,7 @@ namespace Graphics
                 ID3D12Resource*              HitCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingVisualizationResource = nullptr;
+                ID3D12Resource*              RadianceCacheAccumulationResource = nullptr;  // SHaRC-style atomic accumulation
                 UINT                         CascadeCellNum;
 
                 // Variability Tracking

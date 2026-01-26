@@ -49,6 +49,29 @@
 #define RADIANCE_CACHE_FIXED_BLEND_MODE 1
 #endif
 
+// UPDATE_JITTER: Temporal spreading to reduce race conditions
+// - Each cell only updates when (HashID + frameNumber) % UPDATE_JITTER == 0
+// - Reduces chance of multiple threads writing same cell in same frame
+// - Higher value = more stable but slower convergence
+// - 1 = no jittering (all cells update every frame)
+#ifndef RADIANCE_CACHE_UPDATE_JITTER
+#define RADIANCE_CACHE_UPDATE_JITTER 4
+#endif
+
+// USE_ATOMIC_ACCUMULATION: Use SHaRC-style atomic operations
+// - 1 = use InterlockedAdd for thread-safe accumulation (recommended)
+// - 0 = use temporal jittering (simpler fallback)
+#ifndef RADIANCE_CACHE_USE_ATOMIC_ACCUMULATION
+#define RADIANCE_CACHE_USE_ATOMIC_ACCUMULATION 1
+#endif
+
+// RADIANCE_SCALE: Scale factor for converting float radiance to integer for atomics
+// Higher = more precision, but risk of overflow
+// SHaRC uses different scales, we use 1024 as a safe default
+#ifndef RADIANCE_CACHE_RADIANCE_SCALE
+#define RADIANCE_CACHE_RADIANCE_SCALE 1024.0f
+#endif
+
 #include "../include/Descriptors.hlsl"
 #include "../include/InlineLighting.hlsl"
 #include "../include/InlineRayTracingCommon.hlsl"
@@ -212,60 +235,103 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     float3 NewRadiance = DirectLight + IndirectLight;
 
     // ============================================================================
-    // Hybrid Linear/Exponential Accumulation (idTech8/SHaRC-inspired)
-    //
-    // Phase 1 (Linear): blend = 1/N where N is sample count (fast convergence)
-    // Phase 2 (Exponential): blend = 1/MAX_SAMPLES (temporal stability)
-    //
-    // Without explicit sample count storage, we estimate effective sample count
-    // from luminance stability. When scene changes significantly, we "reset"
-    // to linear accumulation.
+    // Spatial Hash Indexing with Checksum (SHaRC-style collision detection)
     // ============================================================================
+    uint HashID;
+    uint Checksum;
+    SpatialHashCascadeIndexWithChecksum(
+        payload.worldPosition,
+        GetCascadeCellRadius(),
+        GetMaxCacheCellCount(),
+        GetCascadeCount(),
+        GetCascadeBaseDistance(),
+        HashID,
+        Checksum
+    );
+
     RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
-    float3 OldRadiance = RadianceCachingBuffer[HitIndex];
+    float3 FinalRadiance;
 
-    // Compute luminance for stability detection
-    float OldLuminance = dot(OldRadiance, float3(0.299f, 0.587f, 0.114f));
-    float NewLuminance = dot(NewRadiance, float3(0.299f, 0.587f, 0.114f));
+#if RADIANCE_CACHE_USE_ATOMIC_ACCUMULATION
+    // ============================================================================
+    // SHaRC-style Atomic Accumulation (using RWByteAddressBuffer)
+    // Convert radiance to scaled integers and use InterlockedAdd for thread safety
+    // ============================================================================
+    RWByteAddressBuffer AccumulationBuffer = GetRadianceCacheAccumulationByteBuffer();
 
-    float BlendFactor;
+    // Scale radiance to integers for atomic operations
+    uint3 ScaledRadiance = uint3(saturate(NewRadiance) * RADIANCE_CACHE_RADIANCE_SCALE);
 
-#if RADIANCE_CACHE_FIXED_BLEND_MODE
-    // Fixed blend mode: always use 1/MAX_SAMPLES for maximum stability
-    // This is the "converged" state - very slow adaptation but no flickering
-    BlendFactor = 1.0f / RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES;
-#else
-    // Adaptive mode: estimate effective sample count from luminance stability
-    float RelativeChange = abs(NewLuminance - OldLuminance) / max(OldLuminance, 0.001f);
+    // Calculate byte offset (16 bytes per entry: 4x uint)
+    uint ByteOffset = HashID * 16;
 
-    // - High change (>threshold) → low sample count → high blend (linear phase)
-    // - Low change → high sample count → low blend (exponential phase)
-    float StabilityFactor = saturate(1.0f - RelativeChange / RADIANCE_CACHE_CHANGE_THRESHOLD);
-    float EffectiveSampleCount = lerp(1.0f, RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES, StabilityFactor);
+    // Atomic add - thread-safe accumulation
+    uint OriginalR, OriginalG, OriginalB, OriginalCount;
+    AccumulationBuffer.InterlockedAdd(ByteOffset + 0, ScaledRadiance.x, OriginalR);
+    AccumulationBuffer.InterlockedAdd(ByteOffset + 4, ScaledRadiance.y, OriginalG);
+    AccumulationBuffer.InterlockedAdd(ByteOffset + 8, ScaledRadiance.z, OriginalB);
+    AccumulationBuffer.InterlockedAdd(ByteOffset + 12, 1u, OriginalCount);
 
-    // Blend factor: 1/N mimics linear accumulation, capped at 1/MAX for exponential phase
-    BlendFactor = 1.0f / EffectiveSampleCount;
-#endif
+    // Read back accumulated values (after our add)
+    uint NewR = OriginalR + ScaledRadiance.x;
+    uint NewG = OriginalG + ScaledRadiance.y;
+    uint NewB = OriginalB + ScaledRadiance.z;
+    uint NewCount = OriginalCount + 1;
 
-    // For uninitialized cells (near-zero luminance), use new value directly
-    if (OldLuminance < 0.0001f)
+    float SampleCount = max((float)NewCount, 1.0f);
+
+    // Compute average radiance from accumulated samples
+    float3 AccumulatedRadiance = float3(NewR, NewG, NewB) / (RADIANCE_CACHE_RADIANCE_SCALE * SampleCount);
+
+    // Blend accumulated radiance with resolved history
+    float3 OldRadiance = RadianceCachingBuffer[HashID];
+    float BlendFactor = 1.0f / min(SampleCount, RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES);
+
+    // For first sample, use new value directly
+    if (SampleCount <= 1.0f)
     {
         BlendFactor = 1.0f;
     }
 
-    // Blend with history
-    float3 FinalRadiance = lerp(OldRadiance, NewRadiance, BlendFactor);
-    RadianceCachingBuffer[HitIndex] = FinalRadiance;
+    FinalRadiance = lerp(OldRadiance, AccumulatedRadiance, BlendFactor);
+    RadianceCachingBuffer[HashID] = FinalRadiance;
+
+#else
+    // ============================================================================
+    // Non-atomic fallback with temporal jittering
+    // ============================================================================
+    float3 OldRadiance = RadianceCachingBuffer[HashID];
+    uint FrameNumber = GetGlobalConst(app, frameNumber);
+    bool ShouldUpdate = ((HashID + FrameNumber) % RADIANCE_CACHE_UPDATE_JITTER) == 0;
+
+    FinalRadiance = OldRadiance; // Default: keep old value
+
+    if (ShouldUpdate)
+    {
+        float OldLuminance = dot(OldRadiance, float3(0.299f, 0.587f, 0.114f));
+        float BlendFactor = (float)RADIANCE_CACHE_UPDATE_JITTER / RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES;
+
+        if (OldLuminance < 0.0001f)
+        {
+            BlendFactor = 1.0f;
+        }
+
+        FinalRadiance = lerp(OldRadiance, NewRadiance, BlendFactor);
+        RadianceCachingBuffer[HashID] = FinalRadiance;
+    }
+#endif
 
     // ============================================================================
-    // Visualization with same hybrid blending
+    // Visualization buffer (still uses HitIndex for per-ray debugging)
+    // Uses fixed blend factor for stability
     // ============================================================================
+    float VisualizationBlend = 1.0f / RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES;
     RWStructuredBuffer<RadianceCacheVisualization> IndirectRadianceCachingBuffer = GetRadianceCachingVisualizationBuffer();
     float3 OldDirectRadiance = IndirectRadianceCachingBuffer[HitIndex].DirectRadiance;
     float3 OldIndirectRadiance = IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance;
 
-    IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = lerp(OldDirectRadiance, DirectLight, BlendFactor);
-    IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = lerp(OldIndirectRadiance, IndirectLight, BlendFactor);
+    IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = lerp(OldDirectRadiance, DirectLight, VisualizationBlend);
+    IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = lerp(OldIndirectRadiance, IndirectLight, VisualizationBlend);
 
     // Store radiance to DDGI ray data
     uint VolumeIndex = hitData.VolumeIndex;
@@ -277,6 +343,6 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     DDGIVolumeDescGPU Volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[VolumeIndex]);
     uint3 outputCoords = DDGIGetRayDataTexelCoords(RayIndex, ProbeIndex, Volume);
 
-    float3 radiance = RadianceCachingBuffer[HitIndex];
-    DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, Volume, saturate(radiance), hitData.HitDistance);
+    // Use FinalRadiance (already computed with temporal blending) for DDGI
+    DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, Volume, saturate(FinalRadiance), hitData.HitDistance);
 }
