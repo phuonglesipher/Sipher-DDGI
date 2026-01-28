@@ -1,9 +1,10 @@
-# Dev Loop Skill
+---
+description: 'Build, run, and auto-fix the Sipher-DDGI application'
+---
+
+# Dev Loop
 
 Build, run, and auto-fix the Sipher-DDGI application.
-
-## Trigger
-User says: /dev-loop, /build-run, /run-fix, or asks to build and run the app with auto-fix
 
 ## Instructions
 
