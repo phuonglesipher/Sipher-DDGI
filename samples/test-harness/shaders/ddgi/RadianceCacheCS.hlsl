@@ -78,8 +78,10 @@
 // USE_COLLISION_DETECTION: Enable checksum-based collision detection
 // - 1 = detect and handle hash collisions using checksums (recommended)
 // - 0 = disable collision detection (faster but may have light bleeding)
+// TEMPORARILY DISABLED: Checksum mismatch due to FP precision between
+// ProbeTraceCS (ray equation position) and RadianceCacheCS (interpolated vertex position)
 #ifndef RADIANCE_CACHE_USE_COLLISION_DETECTION
-#define RADIANCE_CACHE_USE_COLLISION_DETECTION 1
+#define RADIANCE_CACHE_USE_COLLISION_DETECTION 0
 #endif
 
 // MAX_ENTRY_AGE: Maximum age (in frames) before an entry can be evicted
@@ -262,7 +264,10 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     // ============================================================================
     // Spatial Hash Indexing with Checksum (SHaRC-style collision detection)
     // ============================================================================
-    uint HashID;
+    // IMPORTANT: Use HitIndex (original HashID from ProbeTraceCS) for RadianceCachingBuffer
+    // to ensure consistency with ProbeRayResolveCS. Only use recalculated Checksum for
+    // collision detection.
+    uint RecalculatedHashID;
     uint Checksum;
     SpatialHashCascadeIndexWithChecksum(
         payload.worldPosition,
@@ -270,9 +275,12 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
         GetMaxCacheCellCount(),
         GetCascadeCount(),
         GetCascadeBaseDistance(),
-        HashID,
+        RecalculatedHashID,
         Checksum
     );
+
+    // Use HitIndex as the canonical hash ID (matches ProbeTraceCS and ProbeRayResolveCS)
+    uint HashID = HitIndex;
 
     RWStructuredBuffer<float3> RadianceCachingBuffer = GetRadianceCachingBuffer();
     float3 FinalRadiance;
@@ -284,11 +292,11 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     RWByteAddressBuffer AccumulationBuffer = GetRadianceCacheAccumulationByteBuffer();
     RWByteAddressBuffer MetadataBuffer = GetRadianceCacheMetadataBuffer();
 
-    // Calculate byte offsets
+    // Calculate byte offsets using HitIndex (original HashID)
     // Accumulation: 16 bytes per entry (R, G, B, Count)
     // Metadata: 8 bytes per entry (Checksum, Age)
-    uint AccumByteOffset = HashID * 16;
-    uint MetaByteOffset = HashID * 8;
+    uint AccumByteOffset = HitIndex * 16;
+    uint MetaByteOffset = HitIndex * 8;
 
     // ============================================================================
     // Collision Detection (idTech8/SHaRC-style)
@@ -419,16 +427,7 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     IndirectRadianceCachingBuffer[HitIndex].DirectRadiance = lerp(OldDirectRadiance, DirectLight, VisualizationBlend);
     IndirectRadianceCachingBuffer[HitIndex].IndirectRadiance = lerp(OldIndirectRadiance, IndirectLight, VisualizationBlend);
 
-    // Store radiance to DDGI ray data
-    uint VolumeIndex = hitData.VolumeIndex;
-    uint RayIndex = hitData.RayIndex;
-    uint ProbeIndex = hitData.ProbeIndex;
-
-    DDGIVolumeResourceIndices resourceIndices = DDGIVolumeBindless[VolumeIndex];
-    RWTexture2DArray<float4> RayData = GetRWTex2DArray(resourceIndices.rayDataUAVIndex);
-    DDGIVolumeDescGPU Volume = UnpackDDGIVolumeDescGPU(DDGIVolumes[VolumeIndex]);
-    uint3 outputCoords = DDGIGetRayDataTexelCoords(RayIndex, ProbeIndex, Volume);
-
-    // Use FinalRadiance (already computed with temporal blending) for DDGI
-    DDGIStoreProbeRayFrontfaceHit(RayData, outputCoords, Volume, saturate(FinalRadiance), hitData.HitDistance);
+    // NOTE: RayData write has been moved to ProbeRayResolveCS
+    // This shader now only writes to the world-space RadianceCachingBuffer
+    // ProbeRayResolveCS scatters the cached radiance to all probe rays via ProbeRayHitMap
 }

@@ -978,6 +978,10 @@ namespace Graphics
                 range.RegisterSpace = 5;
                 range.OffsetInDescriptorsFromTableStart = DescriptorHeapOffsets::UAV_RADIANCE_CACHE_METADATA;
                 ranges.push_back(range);
+
+                range.RegisterSpace = 6;
+                range.OffsetInDescriptorsFromTableStart = DescriptorHeapOffsets::UAV_PROBE_RAY_HIT_MAP;
+                ranges.push_back(range);
             }
 
             // Bindless UAVs, RWTexture2D (u6, space0)

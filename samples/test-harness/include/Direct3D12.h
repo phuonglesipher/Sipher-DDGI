@@ -280,9 +280,10 @@ namespace Graphics
             const int UAV_RADIANCE_CACHING_VISUALIZATION = UAV_RADIANCE_CACHING + 1;
             const int UAV_RADIANCE_CACHE_ACCUMULATION = UAV_RADIANCE_CACHING_VISUALIZATION + 1;   // SHaRC-style atomic accumulation
             const int UAV_RADIANCE_CACHE_METADATA = UAV_RADIANCE_CACHE_ACCUMULATION + 1;         // SHaRC-style: checksum + age for collision detection
+            const int UAV_PROBE_RAY_HIT_MAP = UAV_RADIANCE_CACHE_METADATA + 1;                   // Maps ProbeRayIndex -> HashID for resolve pass
 
             // Texture2D UAV
-            const int UAV_TEX2D_START = UAV_RADIANCE_CACHE_METADATA + 1;                          //   RWTexture2D UAV Start
+            const int UAV_TEX2D_START = UAV_PROBE_RAY_HIT_MAP + 1;                                //   RWTexture2D UAV Start
             const int UAV_PT_OUTPUT = UAV_TEX2D_START;                              //   7:   1 UAV for the Path Tracer Output RWTexture
             const int UAV_PT_ACCUMULATION = UAV_PT_OUTPUT + 1;                      //   8    1 UAV for the Path Tracer Accumulation RWTexture
             const int UAV_GBUFFERA = UAV_PT_ACCUMULATION + 1;                       //   9:   1 UAV for the GBufferA RWTexture

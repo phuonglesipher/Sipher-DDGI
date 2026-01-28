@@ -108,6 +108,24 @@
       ]
     },
     {
+      "name": "ProbeRayResolveCS",
+      "path": "shaders/ddgi/ProbeRayResolveCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1",
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "RTXGI_DDGI_NUM_VOLUMES=1",
+        "RADIANCE_CACHE_CASCADE_COUNT=1",
+        "RADIANCE_CACHE_CASCADE_CELL_RADIUS=0.2",
+        "RADIANCE_CACHE_CASCADE_DISTANCE=20.0",
+        "RADIANCE_CACHE_CELL_COUNT=100000"
+      ]
+    },
+    {
       "name": "GBufferRGS",
       "path": "shaders/GBufferRGS.hlsl",
       "entry": "RayGen",

@@ -77,6 +77,8 @@ VK_BINDING(14, 0) RWStructuredBuffer<float3>                        RadianceCach
 VK_BINDING(14, 0) RWStructuredBuffer<RadianceCacheVisualization>    RadianceCachingVisualization     : register(u5, space3);
 VK_BINDING(14, 0) RWByteAddressBuffer                                RadianceCacheAccumulation        : register(u5, space4);  // SHaRC-style atomic
 VK_BINDING(14, 0) RWByteAddressBuffer                                RadianceCacheMetadata            : register(u5, space5);  // SHaRC-style: checksum + age
+// ProbeRayHitMap stores: .x = HashID (or INVALID), .y = asuint(HitDistance)
+VK_BINDING(14, 0) RWStructuredBuffer<uint2>                          ProbeRayHitMap                   : register(u5, space6);  // Maps ProbeRayIndex -> (HashID, HitDistance)
 
 
 // Bindless Resources ---------------------------------------------------------------------------------------
@@ -180,6 +182,7 @@ RWStructuredBuffer<float3>            GetRadianceCachingBuffer() { return Radian
 RWStructuredBuffer<RadianceCacheVisualization>            GetRadianceCachingVisualizationBuffer() { return RadianceCachingVisualization; }
 RWByteAddressBuffer                   GetRadianceCacheAccumulationByteBuffer() { return RadianceCacheAccumulation; }  // SHaRC-style atomic
 RWByteAddressBuffer                   GetRadianceCacheMetadataBuffer() { return RadianceCacheMetadata; }  // SHaRC-style: checksum + age
+RWStructuredBuffer<uint2>             GetProbeRayHitMap() { return ProbeRayHitMap; }  // Maps ProbeRayIndex -> (HashID, HitDistance)
 
 RaytracingAccelerationStructure GetAccelerationStructure(uint index) { return TLAS[index]; }
 

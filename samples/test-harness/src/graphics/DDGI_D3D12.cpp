@@ -744,7 +744,7 @@ namespace Graphics
                 return true;
             }
 
-            bool CreateCachingBuffers(Globals& d3d, GlobalResources& d3dResources, Resources& resources, UINT cachingCount, std::ofstream& log)
+            bool CreateCachingBuffers(Globals& d3d, GlobalResources& d3dResources, Resources& resources, UINT cachingCount, const Configs::Config& config, std::ofstream& log)
             {
                 //Create hit caching buffer
                 BufferDesc desc = { sizeof(HitCachingPayload) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
@@ -778,6 +778,23 @@ namespace Graphics
                 CHECK(CreateBuffer(d3d, desc, &resources.RadianceCacheMetadataResource), "create radiance cache metadata buffer!\n", log);
 #ifdef GFX_NAME_OBJECTS
                 resources.RadianceCacheMetadataResource->SetName(L"Radiance Cache Metadata Buffer (SHaRC-style: Checksum+Age)");
+#endif
+
+                // Calculate total probe rays across all volumes for ProbeRayHitMap
+                resources.TotalProbeRays = 0;
+                for (UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(config.ddgi.volumes.size()); volumeIndex++)
+                {
+                    const auto& vol = config.ddgi.volumes[volumeIndex];
+                    UINT numProbes = vol.probeCounts.x * vol.probeCounts.y * vol.probeCounts.z;
+                    resources.TotalProbeRays += numProbes * vol.probeNumRays;
+                }
+
+                // Create ProbeRayHitMap buffer (maps ProbeRayIndex -> (HashID, HitDistance) for resolve pass)
+                // Format: uint2 where .x = HashID, .y = asuint(HitDistance)
+                desc = { sizeof(uint32_t) * 2 * resources.TotalProbeRays, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+                CHECK(CreateBuffer(d3d, desc, &resources.ProbeRayHitMapResource), "create probe ray hit map buffer!\n", log);
+#ifdef GFX_NAME_OBJECTS
+                resources.ProbeRayHitMapResource->SetName(L"Probe Ray Hit Map Buffer");
 #endif
 
             #if !RTXGI_DDGI_RESOURCE_MANAGEMENT
@@ -816,6 +833,12 @@ namespace Graphics
                 rawUavDesc.Buffer.NumElements = cachingCount * 2; // 2 uints per entry (checksum + age)
                 handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_METADATA * d3dResources.srvDescHeapEntrySize);
                 d3d.device->CreateUnorderedAccessView(resources.RadianceCacheMetadataResource, nullptr, &rawUavDesc, handle);
+
+                // UAV for ProbeRayHitMap buffer (RWStructuredBuffer<uint2>)
+                uavdesc.Buffer.NumElements = resources.TotalProbeRays;
+                uavdesc.Buffer.StructureByteStride = sizeof(uint32_t) * 2;  // uint2
+                handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_PROBE_RAY_HIT_MAP * d3dResources.srvDescHeapEntrySize);
+                d3d.device->CreateUnorderedAccessView(resources.ProbeRayHitMapResource, nullptr, &uavdesc, handle);
             #endif
 
                 return true;
@@ -855,6 +878,7 @@ namespace Graphics
                 resources.indirectCS.Release();
                 resources.probeTraceCS.Release();
                 resources.radianceCacheCS.Release();
+                resources.probeRayResolveCS.Release();
 
                 std::wstring root = std::wstring(d3d.shaderCompiler.root.begin(), d3d.shaderCompiler.root.end());
 
@@ -973,6 +997,26 @@ namespace Graphics
                     CHECK(Shaders::Compile(d3d.shaderCompiler, resources.radianceCacheCS), "compile radiance cache compute shader!\n", log);
                 }
 
+                // Load and compile the probe ray resolve compute shader
+                {
+                    std::wstring shaderPath = root + L"shaders/ddgi/ProbeRayResolveCS.hlsl";
+                    resources.probeRayResolveCS.filepath = shaderPath.c_str();
+                    resources.probeRayResolveCS.entryPoint = L"CS";
+                    resources.probeRayResolveCS.targetProfile = L"cs_6_6";
+
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"CONSTS_REGISTER", L"b0");
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"CONSTS_SPACE", L"space1");
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RTXGI_BINDLESS_TYPE", std::to_wstring(RTXGI_BINDLESS_TYPE));
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RTXGI_COORDINATE_SYSTEM", std::to_wstring(RTXGI_COORDINATE_SYSTEM));
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RTXGI_DDGI_NUM_VOLUMES", std::to_wstring(numVolumes));
+
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RADIANCE_CACHE_CASCADE_COUNT", std::to_wstring(numVolumes));
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RADIANCE_CACHE_CASCADE_CELL_RADIUS", std::to_wstring(d3d.CascadeCellRadius));
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RADIANCE_CACHE_CASCADE_DISTANCE", std::to_wstring(d3d.CascadeDistance));
+                    Shaders::AddDefine(resources.probeRayResolveCS, L"RADIANCE_CACHE_CELL_COUNT", std::to_wstring(d3d.CacheCount));
+                    CHECK(Shaders::Compile(d3d.shaderCompiler, resources.probeRayResolveCS), "compile probe ray resolve compute shader!\n", log);
+                }
+
                 return true;
             }
 
@@ -1024,6 +1068,7 @@ namespace Graphics
             {
                 // Release existing PSOs
                 SAFE_RELEASE(resources.radianceCachePSO);
+                SAFE_RELEASE(resources.probeRayResolvePSO);
 
                 // Create the radiance cache compute PSO (inline ray tracing)
                 CHECK(CreateComputePSO(
@@ -1035,6 +1080,18 @@ namespace Graphics
 
 #ifdef GFX_NAME_OBJECTS
                 resources.radianceCachePSO->SetName(L"Radiance Cache PSO");
+#endif
+
+                // Create the probe ray resolve compute PSO
+                CHECK(CreateComputePSO(
+                    d3d.device,
+                    d3dResources.rootSignature,
+                    resources.probeRayResolveCS,
+                    &resources.probeRayResolvePSO),
+                    "create Probe Ray Resolve PSO!\n", log);
+
+#ifdef GFX_NAME_OBJECTS
+                resources.probeRayResolvePSO->SetName(L"Probe Ray Resolve PSO");
 #endif
 
                 return true;
@@ -1167,6 +1224,14 @@ namespace Graphics
             {
                 D3D12_GPU_DESCRIPTOR_HANDLE GPUHeapStart = d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart();
 
+                // Clear the HitCaching buffer to avoid garbage data
+                D3D12_CPU_DESCRIPTOR_HANDLE HitCacheCPUHandle;
+                HitCacheCPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_HIT_CACHING * d3dResources.srvDescHeapEntrySize);
+                D3D12_GPU_DESCRIPTOR_HANDLE HitCacheGPUHandle;
+                HitCacheGPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_HIT_CACHING * d3dResources.srvDescHeapEntrySize);
+                UINT ZeroClear[4] = {0, 0, 0, 0};
+                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewUint(HitCacheGPUHandle, HitCacheCPUHandle, resources.HitCachingResource, ZeroClear, 0, nullptr);
+
                 // Clear the radiance buffer (temporal history)
                 D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle;
                 CPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
@@ -1185,11 +1250,23 @@ namespace Graphics
                 UINT ClearValueUint[4] = {0, 0, 0, 0};
                 d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewUint(MetaGPUHandle, MetaCPUHandle, resources.RadianceCacheMetadataResource, ClearValueUint, 0, nullptr);
 
-                // UAV barrier for metadata buffer
-                D3D12_RESOURCE_BARRIER barrier = {};
-                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                barrier.UAV.pResource = resources.RadianceCacheMetadataResource;
-                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+                // Clear the ProbeRayHitMap buffer to INVALID (0xFFFFFFFF)
+                // This ensures rays that aren't traced don't have garbage HashIDs
+                D3D12_CPU_DESCRIPTOR_HANDLE HitMapCPUHandle;
+                HitMapCPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_PROBE_RAY_HIT_MAP * d3dResources.srvDescHeapEntrySize);
+                D3D12_GPU_DESCRIPTOR_HANDLE HitMapGPUHandle;
+                HitMapGPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_PROBE_RAY_HIT_MAP * d3dResources.srvDescHeapEntrySize);
+
+                UINT InvalidValue[4] = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewUint(HitMapGPUHandle, HitMapCPUHandle, resources.ProbeRayHitMapResource, InvalidValue, 0, nullptr);
+
+                // UAV barrier for metadata and hitmap buffers
+                D3D12_RESOURCE_BARRIER barriers[2] = {};
+                barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barriers[0].UAV.pResource = resources.RadianceCacheMetadataResource;
+                barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barriers[1].UAV.pResource = resources.ProbeRayHitMapResource;
+                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(2, barriers);
 
                 // Also clear the accumulation buffer
                 ClearRadianceCacheAccumulation(d3d, d3dResources, resources);
@@ -1277,19 +1354,11 @@ namespace Graphics
             #endif
             }
 
-            void RayTraceVolumeCS(Globals& d3d, GlobalResources& d3dResources, Resources& resources, DDGIVolume* volumes)
+            void RayTraceVolumeCS(Globals& d3d, GlobalResources& d3dResources, Resources& resources, DDGIVolume* volume)
             {
                 #ifdef GFX_PERF_MARKERS
                 PIXBeginEvent(d3d.cmdList[d3d.frameIndex], PIX_COLOR(GFX_PERF_MARKER_GREEN), "Ray Trace Volume CS");
             #endif
-
-                // Transition the selected volume's irradiance, distance, and data texture arrays from read-write (UAV) to read-only (non-pixel shader)
-                // Note: use PRE_GATHER_PS if using the pixel shader (instead of compute) to gather indirect light
-                for (UINT volumeIndex = 0; volumeIndex < static_cast<UINT>(resources.selectedVolumes.size()); volumeIndex++)
-                {
-                    const DDGIVolume* volume = resources.selectedVolumes[volumeIndex];
-                    volume->TransitionResources(d3d.cmdList[d3d.frameIndex], EDDGIExecutionStage::PRE_GATHER_CS);
-                }
 
                 // Set the descriptor heaps
                 ID3D12DescriptorHeap* ppHeaps[] = { d3dResources.srvDescHeap, d3dResources.samplerDescHeap };
@@ -1297,6 +1366,18 @@ namespace Graphics
 
                 // Set the root signature
                 d3d.cmdList[d3d.frameIndex]->SetComputeRootSignature(d3dResources.rootSignature);
+
+                // Update the global root constants
+                UINT offset = 0;
+                GlobalConstants consts = d3dResources.constants;
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, AppConsts::GetNum32BitValues(), consts.app.GetData(), offset);
+                offset += AppConsts::GetAlignedNum32BitValues();
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, PathTraceConsts::GetNum32BitValues(), consts.pt.GetData(), offset);
+                offset += PathTraceConsts::GetAlignedNum32BitValues();
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, LightingConsts::GetNum32BitValues(), consts.lights.GetData(), offset);
+
+                // Set DDGIRootConstants for the volume
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(1, DDGIRootConstants::GetNum32BitValues(), volume->GetRootConstants().GetData(), 0);
 
                 // Set the root parameter descriptor tables
             #if RTXGI_BINDLESS_TYPE == RTXGI_BINDLESS_TYPE_RESOURCE_ARRAYS
@@ -1307,15 +1388,21 @@ namespace Graphics
                 // Set the PSO
                 d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.probeTracePSO);
 
-                // Dispatch threads
-                int3 ProbesCount = volumes->GetProbeCounts();
-                d3d.cmdList[d3d.frameIndex]->Dispatch(ProbesCount.x, ProbesCount.y, ProbesCount.z);
+                // Dispatch threads with new pattern: (RayGroupsPerProbe, NumProbes, 1)
+                // This ensures ALL rays per probe are traced (not just 64)
+                int3 ProbesCount = volume->GetProbeCounts();
+                UINT numProbes = ProbesCount.x * ProbesCount.y * ProbesCount.z;
+                UINT raysPerProbe = volume->GetNumRaysPerProbe();
+                UINT rayGroupsPerProbe = (raysPerProbe + 63) / 64;
+                d3d.cmdList[d3d.frameIndex]->Dispatch(rayGroupsPerProbe, numProbes, 1);
 
-                // Wait for the compute pass to finish
-                D3D12_RESOURCE_BARRIER barrier = {};
-                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                barrier.UAV.pResource = resources.output;
-                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+                // Wait for the compute pass to finish - barrier on ProbeRayHitMap and HitCaching
+                D3D12_RESOURCE_BARRIER barriers[2] = {};
+                barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barriers[0].UAV.pResource = resources.HitCachingResource;
+                barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barriers[1].UAV.pResource = resources.ProbeRayHitMapResource;
+                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(2, barriers);
 
             #ifdef GFX_PERF_MARKERS
                 PIXEndEvent(d3d.cmdList[d3d.frameIndex]);
@@ -1362,6 +1449,61 @@ namespace Graphics
                 D3D12_RESOURCE_BARRIER barrier = {};
                 barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
                 barrier.UAV.pResource = resources.RadianceCachingResource;
+                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+
+            #ifdef GFX_PERF_MARKERS
+                PIXEndEvent(d3d.cmdList[d3d.frameIndex]);
+            #endif
+            }
+
+            void ProbeRayResolveCS(Globals& d3d, GlobalResources& d3dResources, Resources& resources, DDGIVolume* volume)
+            {
+            #ifdef GFX_PERF_MARKERS
+                PIXBeginEvent(d3d.cmdList[d3d.frameIndex], PIX_COLOR(GFX_PERF_MARKER_GREEN), "Probe Ray Resolve CS");
+            #endif
+
+                // Set the descriptor heaps
+                ID3D12DescriptorHeap* ppHeaps[] = { d3dResources.srvDescHeap, d3dResources.samplerDescHeap };
+                d3d.cmdList[d3d.frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+                // Set the root signature
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootSignature(d3dResources.rootSignature);
+
+                // Update the root constants
+                UINT offset = 0;
+                GlobalConstants consts = d3dResources.constants;
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, AppConsts::GetNum32BitValues(), consts.app.GetData(), offset);
+                offset += AppConsts::GetAlignedNum32BitValues();
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, PathTraceConsts::GetNum32BitValues(), consts.pt.GetData(), offset);
+                offset += PathTraceConsts::GetAlignedNum32BitValues();
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(0, LightingConsts::GetNum32BitValues(), consts.lights.GetData(), offset);
+
+                // Set DDGIRootConstants for the volume
+                d3d.cmdList[d3d.frameIndex]->SetComputeRoot32BitConstants(1, DDGIRootConstants::GetNum32BitValues(), volume->GetRootConstants().GetData(), 0);
+
+                // Set the root parameter descriptor tables
+            #if RTXGI_BINDLESS_TYPE == RTXGI_BINDLESS_TYPE_RESOURCE_ARRAYS
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootDescriptorTable(2, d3dResources.samplerDescHeap->GetGPUDescriptorHandleForHeapStart());
+                d3d.cmdList[d3d.frameIndex]->SetComputeRootDescriptorTable(3, d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart());
+            #endif
+
+                // Set the compute PSO
+                d3d.cmdList[d3d.frameIndex]->SetPipelineState(resources.probeRayResolvePSO);
+
+                // Calculate total probe rays for this volume
+                int3 probeCounts = volume->GetProbeCounts();
+                UINT numProbes = probeCounts.x * probeCounts.y * probeCounts.z;
+                UINT raysPerProbe = volume->GetNumRaysPerProbe();
+                UINT totalProbeRays = numProbes * raysPerProbe;
+
+                // Dispatch compute threads - ProbeRayResolveCS uses [numthreads(64, 1, 1)]
+                UINT numGroups = (totalProbeRays + 63) / 64;
+                d3d.cmdList[d3d.frameIndex]->Dispatch(numGroups, 1, 1);
+
+                // Wait for the compute pass to finish
+                D3D12_RESOURCE_BARRIER barrier = {};
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barrier.UAV.pResource = volume->GetProbeRayData();
                 d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
 
             #ifdef GFX_PERF_MARKERS
@@ -1459,7 +1601,7 @@ namespace Graphics
                 // Create the RTV descriptor heap
                 if (!CreateRTVDescriptorHeap(d3d, resources, numVolumes)) return false;
 
-                if (!CreateCachingBuffers(d3d, d3dResources, resources, resources.CascadeCellNum, log)) return false;
+                if (!CreateCachingBuffers(d3d, d3dResources, resources, resources.CascadeCellNum, config, log)) return false;
 
                 // Initialize the DDGIVolumes
                 for (UINT volumeIndex = 0; volumeIndex < numVolumes; volumeIndex++)
@@ -1622,6 +1764,10 @@ namespace Graphics
                     RayTraceRadianceCacheCS(d3d, d3dResources, resources);
                     GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
 
+                    // Resolve cached radiance to RayData for all probe rays
+                    // This scatters the world-space radiance cache to per-ray RayData
+                    ProbeRayResolveCS(d3d, d3dResources, resources, resources.selectedVolumes[volumeIndex]);
+
                     // Update volume probes
                     GPU_TIMESTAMP_BEGIN(resources.blendStat->GetGPUQueryBeginIndex());
                     rtxgi::d3d12::UpdateDDGIVolumeProbes(d3d.cmdList[d3d.frameIndex], numVolumes, resources.selectedVolumes[volumeIndex]);
@@ -1673,12 +1819,14 @@ namespace Graphics
                 resources.indirectCS.Release();
                 resources.probeTraceCS.Release();
                 resources.radianceCacheCS.Release();
+                resources.probeRayResolveCS.Release();
 
                 SAFE_RELEASE(resources.rtpso);
                 SAFE_RELEASE(resources.rtpsoInfo);
                 SAFE_RELEASE(resources.indirectPSO);
                 SAFE_RELEASE(resources.probeTracePSO);
                 SAFE_RELEASE(resources.radianceCachePSO);
+                SAFE_RELEASE(resources.probeRayResolvePSO);
 
                 resources.shaderTableSize = 0;
                 resources.shaderTableRecordSize = 0;
@@ -1703,6 +1851,8 @@ namespace Graphics
                 SAFE_RELEASE(resources.RadianceCachingVisualizationResource);
                 SAFE_RELEASE(resources.RadianceCacheAccumulationResource);
                 SAFE_RELEASE(resources.RadianceCacheMetadataResource);
+                SAFE_RELEASE(resources.ProbeRayHitMapResource);
+                SAFE_RELEASE(resources.probeRayResolvePSO);
 
                 // Release volumes
                 for (size_t volumeIndex = 0; volumeIndex < resources.volumes.size(); volumeIndex++)

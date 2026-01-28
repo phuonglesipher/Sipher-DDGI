@@ -66,13 +66,17 @@ namespace Graphics
 
                 // Radiance Cache (Inline Ray Tracing - Compute Shader)
                 Shaders::ShaderProgram       radianceCacheCS;
+                Shaders::ShaderProgram       probeRayResolveCS;
                 ID3D12PipelineState*         radianceCachePSO = nullptr;
+                ID3D12PipelineState*         probeRayResolvePSO = nullptr;
                 ID3D12Resource*              HitCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingResource = nullptr;
                 ID3D12Resource*              RadianceCachingVisualizationResource = nullptr;
                 ID3D12Resource*              RadianceCacheAccumulationResource = nullptr;  // SHaRC-style atomic accumulation
                 ID3D12Resource*              RadianceCacheMetadataResource = nullptr;      // SHaRC-style: checksum + age for collision detection
+                ID3D12Resource*              ProbeRayHitMapResource = nullptr;             // Maps ProbeRayIndex -> HashID for resolve pass
                 UINT                         CascadeCellNum;
+                UINT                         TotalProbeRays = 0;                           // NumProbes * RaysPerProbe
 
                 // Variability Tracking
                 std::vector<uint32_t>        numVolumeVariabilitySamples;
