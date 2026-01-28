@@ -17,6 +17,7 @@
 #include "UI.h"
 #include "Window.h"
 #include "Benchmark.h"
+#include "AppLogger.h"
 
 #include "graphics/PathTracing.h"
 #include "graphics/GBuffer.h"
@@ -63,9 +64,20 @@ void StoreImages(
  */
 int Run(const std::vector<std::string>& arguments)
 {
+    // Initialize the agent-friendly logger
+    if (!AppLog::Logger::Instance().Initialize("app_log.txt"))
+    {
+        return EXIT_FAILURE;
+    }
+    LOG_INFO("App", "Application starting...");
+
     std::ofstream log;
     log.open("log.txt", std::ios::out);
-    if (!log.is_open()) return EXIT_FAILURE;
+    if (!log.is_open())
+    {
+        LOG_ERROR("App", "Failed to open log.txt");
+        return EXIT_FAILURE;
+    }
 
     // Global Data Structures
     Configs::Config config;
@@ -101,54 +113,69 @@ int Run(const std::vector<std::string>& arguments)
 
     // Parse the command line and get the config file path
     log << "Parsing command line...";
+    LOG_INFO("Init", "Parsing command line...");
     if (!Configs::ParseCommandLine(arguments, config, log))
     {
         log << "Failed to parse the command line!";
+        LOG_ERROR("Init", "Failed to parse the command line");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done.\n";
+    LOG_INFO("Init", "Command line parsed successfully");
 
     // Load and parse the config file
     log << "Loading config file...";
+    LOG_INFO("Init", "Loading config file: " + config.app.filepath);
     if (!Configs::Load(config, log))
     {
+        LOG_ERROR("Init", "Failed to load config file");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done.\n";
+    LOG_INFO("Init", "Config loaded successfully");
 
     // Create a window
     log << "Creating a window...";
+    LOG_INFO("Init", "Creating window (" + std::to_string(config.app.width) + "x" + std::to_string(config.app.height) + ")");
     if(!Windows::Create(config, gfx.window))
     {
         log << "\nFailed to create the window!";
+        LOG_ERROR("Init", "Failed to create window");
         log.close();
         return EXIT_FAILURE;
     }
 
     log << "done.\n";
+    LOG_INFO("Init", "Window created successfully");
 
     // Input
     log << "Initializing input system...";
+    LOG_INFO("Init", "Initializing input system...");
     Inputs::Input input;
     if(!Inputs::Initialize(gfx.window, input, config, scene))
     {
         log << "\nFailed to initialize input!";
+        LOG_ERROR("Init", "Failed to initialize input system");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done.\n";
+    LOG_INFO("Init", "Input system initialized");
 
     // Create a device
     log << "Creating graphics device...";
+    LOG_INFO("Graphics", "Creating D3D12 device...");
     if (!Graphics::CreateDevice(gfx, config))
     {
         log << "\nFailed to create the graphics device!";
+        LOG_ERROR("Graphics", "Failed to create D3D12 device - check GPU drivers and DirectX 12 support");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done.\n";
+    LOG_INFO("Graphics", "D3D12 device created successfully");
 
 #ifdef GPU_COMPRESSION
     // Initialize the texture system
@@ -164,49 +191,78 @@ int Run(const std::vector<std::string>& arguments)
 
     // Initialize the scene
     log << "Initializing the scene...";
+    LOG_INFO("Scene", "Initializing scene: " + config.scene.file);
     if (!Scenes::Initialize(config, scene, log))
     {
         log << "\nFailed to initialize the scene!";
+        LOG_ERROR("Scene", "Failed to initialize scene - check scene file path and format");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done.\n";
+    LOG_INFO("Scene", "Scene initialized: " + std::to_string(scene.meshes.size()) + " meshes, " + std::to_string(scene.textures.size()) + " textures");
 
     // Initialize the graphics system
     log << "Initializing graphics...";
+    LOG_INFO("Graphics", "Initializing graphics resources...");
     if (!Graphics::Initialize(config, scene, gfx, gfxResources, log))
     {
         log << "\nFailed to initialize graphics!";
+        LOG_ERROR("Graphics", "Failed to initialize graphics resources");
         log.close();
         return EXIT_FAILURE;
     }
+    LOG_INFO("Graphics", "Graphics resources initialized");
 
     // Initialize the graphics workloads
+    LOG_INFO("Graphics", "Initializing PathTracing workload...");
     CHECK(Graphics::PathTracing::Initialize(gfx, gfxResources, pt, perf, log), "initialize path tracing workload!\n", log);
+    LOG_INFO("Graphics", "PathTracing initialized");
+
+    LOG_INFO("Graphics", "Initializing GBuffer workload...");
     CHECK(Graphics::GBuffer::Initialize(gfx, gfxResources, gbuffer, perf, log), "initialize gbuffer workload!\n", log);
+    LOG_INFO("Graphics", "GBuffer initialized");
+
+    LOG_INFO("Graphics", "Initializing DDGI workload...");
     CHECK(Graphics::DDGI::Initialize(gfx, gfxResources, ddgi, config, perf, log), "initialize dynamic diffuse global illumination workload!\n", log);
+    LOG_INFO("Graphics", "DDGI initialized with " + std::to_string(ddgi.volumes.size()) + " volumes");
+
+    LOG_INFO("Graphics", "Initializing DDGI Visualizations...");
     CHECK(Graphics::DDGI::Visualizations::Initialize(gfx, gfxResources, ddgi, ddgiVis, perf, config, log), "initialize dynamic diffuse global illumination visualization workload!\n", log);
+    LOG_INFO("Graphics", "DDGI Visualizations initialized");
+
+    LOG_INFO("Graphics", "Initializing RTAO workload...");
     CHECK(Graphics::RTAO::Initialize(gfx, gfxResources, rtao, perf, log), "initialize ray traced ambient occlusion workload!\n", log);
+    LOG_INFO("Graphics", "RTAO initialized");
+
+    LOG_INFO("Graphics", "Initializing Composite workload...");
     CHECK(Graphics::Composite::Initialize(gfx, gfxResources, composite, perf, log), "initialize composition workload!\n", log);
+    LOG_INFO("Graphics", "Composite initialized");
 
     // Initialize the user interface system
     log << "Initializing user interface...";
+    LOG_INFO("UI", "Initializing user interface...");
     if (!Graphics::UI::Initialize(gfx, gfxResources, ui, perf, log))
     {
         log << "\nFailed to initialize user interface!";
+        LOG_ERROR("UI", "Failed to initialize user interface");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done.\n";
+    LOG_INFO("UI", "User interface initialized");
 
     log << "Post initialization...";
+    LOG_INFO("Graphics", "Post initialization...");
     if (!Graphics::PostInitialize(gfx, log))
     {
         log << "\nFailed post-initialize!";
+        LOG_ERROR("Graphics", "Post initialization failed");
         log.close();
         return EXIT_FAILURE;
     }
     log << "done\n";
+    LOG_INFO("Graphics", "Post initialization complete");
 
     // Add a few more CPU stats
     Instrumentation::Stat* timestampEndStat = perf.AddCPUStat("TimestampEnd");
@@ -218,6 +274,7 @@ int Run(const std::vector<std::string>& arguments)
 
     log << "Main loop...\n";
     std::flush(log);
+    LOG_INFO("App", "Entering main loop");
 
     // Main loop
     while(!glfwWindowShouldClose(gfx.window))
@@ -226,13 +283,29 @@ int Run(const std::vector<std::string>& arguments)
 
         // Wait for the previous frame's GPU work to complete
         CPU_TIMESTAMP_BEGIN(waitStat);
-        if (!Graphics::WaitForPrevGPUFrame(gfx)) { log << "GPU took too long to complete, device removed!"; break; }
+        if (!Graphics::WaitForPrevGPUFrame(gfx))
+        {
+            log << "GPU took too long to complete, device removed!";
+            LOG_FATAL("Graphics", "GPU device removed - WaitForPrevGPUFrame failed");
+#ifdef _WIN32
+            LOG_D3D12_DEVICE_REMOVED(gfx.device);
+#endif
+            break;
+        }
         CPU_TIMESTAMP_ENDANDRESOLVE(waitStat);
 
         // Move to the next frame and reset the frame's command list
         CPU_TIMESTAMP_BEGIN(resetStat);
-        if (!Graphics::MoveToNextFrame(gfx)) break;
-        if (!Graphics::ResetCmdList(gfx)) break;
+        if (!Graphics::MoveToNextFrame(gfx))
+        {
+            LOG_ERROR("Graphics", "MoveToNextFrame failed");
+            break;
+        }
+        if (!Graphics::ResetCmdList(gfx))
+        {
+            LOG_ERROR("Graphics", "ResetCmdList failed");
+            break;
+        }
         CPU_TIMESTAMP_ENDANDRESOLVE(resetStat);
 
         CPU_TIMESTAMP_BEGIN(timestampBeginStat);
@@ -246,27 +319,55 @@ int Run(const std::vector<std::string>& arguments)
         {
             if (config.pathTrace.reload)
             {
-                if (!Graphics::PathTracing::Reload(gfx, gfxResources, pt, log)) break;
+                LOG_INFO("Shaders", "Reloading PathTracing shaders...");
+                if (!Graphics::PathTracing::Reload(gfx, gfxResources, pt, log))
+                {
+                    LOG_ERROR("Shaders", "Failed to reload PathTracing shaders");
+                    break;
+                }
                 config.pathTrace.reload = false;
+                LOG_INFO("Shaders", "PathTracing shaders reloaded successfully");
             }
 
             if (config.ddgi.reload)
             {
-                if (!Graphics::DDGI::Reload(gfx, gfxResources, ddgi, config, log)) break;
-                if (!Graphics::DDGI::Visualizations::Reload(gfx, gfxResources, ddgi, ddgiVis, config, log)) break;
+                LOG_INFO("Shaders", "Reloading DDGI shaders...");
+                if (!Graphics::DDGI::Reload(gfx, gfxResources, ddgi, config, log))
+                {
+                    LOG_ERROR("Shaders", "Failed to reload DDGI shaders");
+                    break;
+                }
+                if (!Graphics::DDGI::Visualizations::Reload(gfx, gfxResources, ddgi, ddgiVis, config, log))
+                {
+                    LOG_ERROR("Shaders", "Failed to reload DDGI Visualization shaders");
+                    break;
+                }
                 config.ddgi.reload = false;
+                LOG_INFO("Shaders", "DDGI shaders reloaded successfully");
             }
 
             if (config.rtao.reload)
             {
-                if (!Graphics::RTAO::Reload(gfx, gfxResources, rtao, log)) break;
+                LOG_INFO("Shaders", "Reloading RTAO shaders...");
+                if (!Graphics::RTAO::Reload(gfx, gfxResources, rtao, log))
+                {
+                    LOG_ERROR("Shaders", "Failed to reload RTAO shaders");
+                    break;
+                }
                 config.rtao.reload = false;
+                LOG_INFO("Shaders", "RTAO shaders reloaded successfully");
             }
 
             if (config.postProcess.reload)
             {
-                if (!Graphics::Composite::Reload(gfx, gfxResources, composite, log)) break;
+                LOG_INFO("Shaders", "Reloading Composite shaders...");
+                if (!Graphics::Composite::Reload(gfx, gfxResources, composite, log))
+                {
+                    LOG_ERROR("Shaders", "Failed to reload Composite shaders");
+                    break;
+                }
                 config.postProcess.reload = false;
+                LOG_INFO("Shaders", "Composite shaders reloaded successfully");
             }
         }
 
@@ -345,12 +446,23 @@ int Run(const std::vector<std::string>& arguments)
 
         // Submit
         CPU_TIMESTAMP_BEGIN(submitStat);
-        if (!Graphics::SubmitCmdList(gfx)) break;
+        if (!Graphics::SubmitCmdList(gfx))
+        {
+            LOG_ERROR("Graphics", "SubmitCmdList failed");
+#ifdef _WIN32
+            LOG_D3D12_DEVICE_REMOVED(gfx.device);
+#endif
+            break;
+        }
         CPU_TIMESTAMP_ENDANDRESOLVE(submitStat);
 
         // Present
         CPU_TIMESTAMP_BEGIN(presentStat);
-        if (!Graphics::Present(gfx)) continue;
+        if (!Graphics::Present(gfx))
+        {
+            LOG_WARNING("Graphics", "Present failed - may recover on next frame");
+            continue;
+        }
         CPU_TIMESTAMP_ENDANDRESOLVE(presentStat);
         CPU_TIMESTAMP_ENDANDRESOLVE(frameStat); // end of frame
 
@@ -414,6 +526,7 @@ int Run(const std::vector<std::string>& arguments)
     CPU_TIMESTAMP_BEGIN(&startupShutdown);
 
     log << "Shutting down and cleaning up...\n";
+    LOG_INFO("App", "Shutting down and cleaning up...");
 
     perf.Cleanup();
 
@@ -434,9 +547,13 @@ int Run(const std::vector<std::string>& arguments)
 
     CPU_TIMESTAMP_END(&startupShutdown);
     log << "Shutdown complete in " << startupShutdown.elapsed << " milliseconds\n";
+    LOG_INFO("App", "Shutdown complete in " + std::to_string(startupShutdown.elapsed) + " milliseconds");
 
     log << "Done.\n";
     log.close();
+
+    LOG_INFO("App", "Application exiting normally");
+    AppLog::Logger::Instance().Shutdown();
 
     return EXIT_SUCCESS;
 }

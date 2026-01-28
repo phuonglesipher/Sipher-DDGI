@@ -1,0 +1,9 @@
+{
+  "skills": {
+    "dev-loop": {
+      "name": "dev-loop",
+      "description": "Build, run, and auto-fix the Sipher-DDGI application",
+      "path": "skills/dev-loop.md"
+    }
+  }
+}

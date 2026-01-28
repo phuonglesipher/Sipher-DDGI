@@ -10,6 +10,7 @@
 
 #include "Shaders.h"
 #include "graphics/UI.h"
+#include "AppLogger.h"
 
 #if __linux__
 #include <filesystem>
@@ -182,11 +183,19 @@ namespace Shaders
             if(errors != nullptr && errors->GetStringLength() != 0)
             {
                 // Convert error blob to a std::string
-                std::vector<char> log(errors->GetStringLength() + 1);
-                memcpy(log.data(), errors->GetStringPointer(), errors->GetStringLength());
+                std::vector<char> logBuffer(errors->GetStringLength() + 1);
+                memcpy(logBuffer.data(), errors->GetStringPointer(), errors->GetStringLength());
 
                 std::string errorMsg = "Shader Compiler Error:\n";
-                errorMsg.append(log.data());
+                errorMsg.append(logBuffer.data());
+
+                // Log to app log for agent debugging
+                std::wstring wFilePath = shader.filepath;
+                // Convert wstring to string using WideCharToMultiByte for proper conversion
+                int size_needed = WideCharToMultiByte(CP_UTF8, 0, wFilePath.c_str(), -1, nullptr, 0, nullptr, nullptr);
+                std::string shaderPath(size_needed - 1, 0);
+                WideCharToMultiByte(CP_UTF8, 0, wFilePath.c_str(), -1, &shaderPath[0], size_needed, nullptr, nullptr);
+                LOG_SHADER_ERROR(shaderPath, logBuffer.data());
 
                 // Spawn a pop-up that displays the compilation errors and retry dialog
                 if (Graphics::UI::MessageRetryBox(errorMsg.c_str()))

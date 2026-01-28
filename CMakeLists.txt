@@ -57,6 +57,13 @@ endif()
 # SDK
 add_subdirectory(rtxgi-sdk)
 
+# Shader Compiler Tool
+option(RTXGI_BUILD_SHADER_COMPILER "Build the shader precompiler tool" ON)
+if(RTXGI_BUILD_SHADER_COMPILER)
+    add_subdirectory(tools/ShaderCompiler)
+    set_target_properties(ShaderCompiler PROPERTIES FOLDER "Tools")
+endif()
+
 # Samples
 option(RTXGI_BUILD_SAMPLES "Include the RTXGI sample application(s)" ON)
 if(RTXGI_BUILD_SAMPLES)

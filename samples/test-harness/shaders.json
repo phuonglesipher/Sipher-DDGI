@@ -1,0 +1,273 @@
+{
+  "version": "1.0",
+  "description": "Shader manifest for Sipher-DDGI Test Harness",
+  "shaders": [
+    {
+      "name": "ProbeTraceRGS",
+      "path": "shaders/ddgi/ProbeTraceRGS.hlsl",
+      "entry": "RayGen",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "GFX_NVAPI=0",
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1",
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "RADIANCE_CACHE_CASCADE_COUNT=1",
+        "RADIANCE_CACHE_CASCADE_CELL_RADIUS=0.2",
+        "RADIANCE_CACHE_CASCADE_DISTANCE=20.0",
+        "RADIANCE_CACHE_CELL_COUNT=100000"
+      ]
+    },
+    {
+      "name": "Miss",
+      "path": "shaders/Miss.hlsl",
+      "entry": "Miss",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "CHS",
+      "path": "shaders/CHS.hlsl",
+      "entry": "CHS_GI",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "AHS",
+      "path": "shaders/AHS.hlsl",
+      "entry": "AHS_GI",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "IndirectCS",
+      "path": "shaders/IndirectCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1",
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "RTXGI_DDGI_NUM_VOLUMES=1",
+        "THGP_DIM_X=8",
+        "THGP_DIM_Y=4",
+        "RADIANCE_CACHE_CASCADE_COUNT=1",
+        "RADIANCE_CACHE_CASCADE_CELL_RADIUS=0.2",
+        "RADIANCE_CACHE_CASCADE_DISTANCE=20.0",
+        "RADIANCE_CACHE_CELL_COUNT=100000",
+        "FINAL_GATHER_DOWNSCALE=1"
+      ]
+    },
+    {
+      "name": "ProbeTraceCS",
+      "path": "shaders/ddgi/ProbeTraceCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1",
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "RTXGI_DDGI_NUM_VOLUMES=1",
+        "RADIANCE_CACHE_CASCADE_COUNT=1",
+        "RADIANCE_CACHE_CASCADE_CELL_RADIUS=0.2",
+        "RADIANCE_CACHE_CASCADE_DISTANCE=20.0",
+        "RADIANCE_CACHE_CELL_COUNT=100000"
+      ]
+    },
+    {
+      "name": "RadianceCacheCS",
+      "path": "shaders/ddgi/RadianceCacheCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1",
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "RTXGI_DDGI_NUM_VOLUMES=1",
+        "RADIANCE_CACHE_CASCADE_COUNT=1",
+        "RADIANCE_CACHE_CASCADE_CELL_RADIUS=0.2",
+        "RADIANCE_CACHE_CASCADE_DISTANCE=20.0",
+        "RADIANCE_CACHE_CELL_COUNT=100000"
+      ]
+    },
+    {
+      "name": "GBufferRGS",
+      "path": "shaders/GBufferRGS.hlsl",
+      "entry": "RayGen",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "GBufferCS",
+      "path": "shaders/GBufferCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "PathTraceRGS",
+      "path": "shaders/PathTraceRGS.hlsl",
+      "entry": "RayGen",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "GFX_NVAPI=0",
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "PathTraceCS",
+      "path": "shaders/PathTraceCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "RTAOTraceRGS",
+      "path": "shaders/RTAOTraceRGS.hlsl",
+      "entry": "RayGen",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "GFX_NVAPI=0",
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "RTAOTraceCS",
+      "path": "shaders/RTAOTraceCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "RTAOFilterCS",
+      "path": "shaders/RTAOFilterCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0",
+        "BLOCK_SIZE=8"
+      ]
+    },
+    {
+      "name": "Composite",
+      "path": "shaders/Composite.hlsl",
+      "entry": "PS",
+      "profile": "ps_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0",
+        "RADIANCE_CACHE_CASCADE_COUNT=1",
+        "RADIANCE_CACHE_CASCADE_CELL_RADIUS=0.2",
+        "RADIANCE_CACHE_CASCADE_DISTANCE=20.0",
+        "RADIANCE_CACHE_CELL_COUNT=100000",
+        "FINAL_GATHER_DOWNSCALE=1"
+      ]
+    },
+    {
+      "name": "ProbesRGS",
+      "path": "shaders/ddgi/visualizations/ProbesRGS.hlsl",
+      "entry": "RayGen",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1"
+      ]
+    },
+    {
+      "name": "ProbesCS",
+      "path": "shaders/ddgi/visualizations/ProbesCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1"
+      ]
+    },
+    {
+      "name": "ProbesCHS",
+      "path": "shaders/ddgi/visualizations/ProbesCHS.hlsl",
+      "entry": "CHS",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "ProbesMiss",
+      "path": "shaders/ddgi/visualizations/ProbesMiss.hlsl",
+      "entry": "Miss",
+      "profile": "lib_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0"
+      ]
+    },
+    {
+      "name": "ProbesUpdateCS",
+      "path": "shaders/ddgi/visualizations/ProbesUpdateCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1"
+      ]
+    },
+    {
+      "name": "VolumeTexturesCS",
+      "path": "shaders/ddgi/visualizations/VolumeTexturesCS.hlsl",
+      "entry": "CS",
+      "profile": "cs_6_6",
+      "spirv": true,
+      "defines": [
+        "RTXGI_BINDLESS_TYPE=0",
+        "RTXGI_COORDINATE_SYSTEM=0",
+        "CONSTS_REGISTER=b0",
+        "CONSTS_SPACE=space1",
+        "THGP_DIM_X=8",
+        "THGP_DIM_Y=4"
+      ]
+    }
+  ]
+}

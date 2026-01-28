@@ -294,6 +294,8 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     // Collision Detection (idTech8/SHaRC-style)
     // Uses frame number instead of age counter to avoid needing separate age increment pass
     // ============================================================================
+    bool bSkipAccumulation = false;
+
 #if RADIANCE_CACHE_USE_COLLISION_DETECTION
     uint CurrentFrame = GetGlobalConst(app, frameNumber);
 
@@ -327,7 +329,7 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
             // Existing entry is recent, skip this update to avoid light bleeding
             // Still need to output something for DDGI
             FinalRadiance = RadianceCachingBuffer[HashID];
-            goto SkipAccumulation;
+            bSkipAccumulation = true;
         }
     }
     else if (IsEmpty)
@@ -343,43 +345,42 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
     }
 #endif // RADIANCE_CACHE_USE_COLLISION_DETECTION
 
-    // Scale radiance to integers for atomic operations
-    uint3 ScaledRadiance = uint3(saturate(NewRadiance) * RADIANCE_CACHE_RADIANCE_SCALE);
-
-    // Atomic add - thread-safe accumulation
-    uint OriginalR, OriginalG, OriginalB, OriginalCount;
-    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 0, ScaledRadiance.x, OriginalR);
-    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 4, ScaledRadiance.y, OriginalG);
-    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 8, ScaledRadiance.z, OriginalB);
-    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 12, 1u, OriginalCount);
-
-    // Read back accumulated values (after our add)
-    uint NewR = OriginalR + ScaledRadiance.x;
-    uint NewG = OriginalG + ScaledRadiance.y;
-    uint NewB = OriginalB + ScaledRadiance.z;
-    uint NewCount = OriginalCount + 1;
-
-    float SampleCount = max((float)NewCount, 1.0f);
-
-    // Compute average radiance from accumulated samples
-    float3 AccumulatedRadiance = float3(NewR, NewG, NewB) / (RADIANCE_CACHE_RADIANCE_SCALE * SampleCount);
-
-    // Blend accumulated radiance with resolved history
-    float3 OldRadiance = RadianceCachingBuffer[HashID];
-    float BlendFactor = 1.0f / min(SampleCount, RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES);
-
-    // For first sample, use new value directly
-    if (SampleCount <= 1.0f)
+    if (!bSkipAccumulation)
     {
-        BlendFactor = 1.0f;
+        // Scale radiance to integers for atomic operations
+        uint3 ScaledRadiance = uint3(saturate(NewRadiance) * RADIANCE_CACHE_RADIANCE_SCALE);
+
+        // Atomic add - thread-safe accumulation
+        uint OriginalR, OriginalG, OriginalB, OriginalCount;
+        AccumulationBuffer.InterlockedAdd(AccumByteOffset + 0, ScaledRadiance.x, OriginalR);
+        AccumulationBuffer.InterlockedAdd(AccumByteOffset + 4, ScaledRadiance.y, OriginalG);
+        AccumulationBuffer.InterlockedAdd(AccumByteOffset + 8, ScaledRadiance.z, OriginalB);
+        AccumulationBuffer.InterlockedAdd(AccumByteOffset + 12, 1u, OriginalCount);
+
+        // Read back accumulated values (after our add)
+        uint NewR = OriginalR + ScaledRadiance.x;
+        uint NewG = OriginalG + ScaledRadiance.y;
+        uint NewB = OriginalB + ScaledRadiance.z;
+        uint NewCount = OriginalCount + 1;
+
+        float SampleCount = max((float)NewCount, 1.0f);
+
+        // Compute average radiance from accumulated samples
+        float3 AccumulatedRadiance = float3(NewR, NewG, NewB) / (RADIANCE_CACHE_RADIANCE_SCALE * SampleCount);
+
+        // Blend accumulated radiance with resolved history
+        float3 OldRadiance = RadianceCachingBuffer[HashID];
+        float BlendFactor = 1.0f / min(SampleCount, RADIANCE_CACHE_MAX_ACCUMULATED_SAMPLES);
+
+        // For first sample, use new value directly
+        if (SampleCount <= 1.0f)
+        {
+            BlendFactor = 1.0f;
+        }
+
+        FinalRadiance = lerp(OldRadiance, AccumulatedRadiance, BlendFactor);
+        RadianceCachingBuffer[HashID] = FinalRadiance;
     }
-
-    FinalRadiance = lerp(OldRadiance, AccumulatedRadiance, BlendFactor);
-    RadianceCachingBuffer[HashID] = FinalRadiance;
-
-#if RADIANCE_CACHE_USE_COLLISION_DETECTION
-SkipAccumulation:
-#endif
 
 #else
     // ============================================================================
