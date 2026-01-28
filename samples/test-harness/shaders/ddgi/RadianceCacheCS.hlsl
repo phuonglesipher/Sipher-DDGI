@@ -72,6 +72,31 @@
 #define RADIANCE_CACHE_RADIANCE_SCALE 1024.0f
 #endif
 
+// ============================================================================
+// Collision Detection Parameters (idTech8/SHaRC-style)
+// ============================================================================
+// USE_COLLISION_DETECTION: Enable checksum-based collision detection
+// - 1 = detect and handle hash collisions using checksums (recommended)
+// - 0 = disable collision detection (faster but may have light bleeding)
+#ifndef RADIANCE_CACHE_USE_COLLISION_DETECTION
+#define RADIANCE_CACHE_USE_COLLISION_DETECTION 1
+#endif
+
+// MAX_ENTRY_AGE: Maximum age (in frames) before an entry can be evicted
+// - Higher = more stable for static scenes
+// - Lower = faster adaptation for dynamic scenes
+// - idTech8 uses 8-16 frames typically
+#ifndef RADIANCE_CACHE_MAX_ENTRY_AGE
+#define RADIANCE_CACHE_MAX_ENTRY_AGE 8
+#endif
+
+// COLLISION_EVICT_THRESHOLD: Age threshold for eviction on collision
+// - If existing entry is older than this, evict it for new entry
+// - Should be <= MAX_ENTRY_AGE
+#ifndef RADIANCE_CACHE_COLLISION_EVICT_THRESHOLD
+#define RADIANCE_CACHE_COLLISION_EVICT_THRESHOLD 4
+#endif
+
 #include "../include/Descriptors.hlsl"
 #include "../include/InlineLighting.hlsl"
 #include "../include/InlineRayTracingCommon.hlsl"
@@ -254,23 +279,79 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
 
 #if RADIANCE_CACHE_USE_ATOMIC_ACCUMULATION
     // ============================================================================
-    // SHaRC-style Atomic Accumulation (using RWByteAddressBuffer)
-    // Convert radiance to scaled integers and use InterlockedAdd for thread safety
+    // SHaRC-style Atomic Accumulation with Collision Detection (idTech8-inspired)
     // ============================================================================
     RWByteAddressBuffer AccumulationBuffer = GetRadianceCacheAccumulationByteBuffer();
+    RWByteAddressBuffer MetadataBuffer = GetRadianceCacheMetadataBuffer();
+
+    // Calculate byte offsets
+    // Accumulation: 16 bytes per entry (R, G, B, Count)
+    // Metadata: 8 bytes per entry (Checksum, Age)
+    uint AccumByteOffset = HashID * 16;
+    uint MetaByteOffset = HashID * 8;
+
+    // ============================================================================
+    // Collision Detection (idTech8/SHaRC-style)
+    // Uses frame number instead of age counter to avoid needing separate age increment pass
+    // ============================================================================
+#if RADIANCE_CACHE_USE_COLLISION_DETECTION
+    uint CurrentFrame = GetGlobalConst(app, frameNumber);
+
+    // Read stored checksum and last update frame
+    uint StoredChecksum = MetadataBuffer.Load(MetaByteOffset + 0);
+    uint StoredFrame = MetadataBuffer.Load(MetaByteOffset + 4);
+
+    // Calculate age as frames since last update
+    uint Age = CurrentFrame - StoredFrame;
+
+    bool IsEmpty = (StoredChecksum == 0);
+    bool IsSameCell = (StoredChecksum == Checksum);
+    bool IsCollision = !IsEmpty && !IsSameCell;
+
+    if (IsCollision)
+    {
+        // Collision detected - check if we should evict the old entry
+        if (Age >= RADIANCE_CACHE_COLLISION_EVICT_THRESHOLD)
+        {
+            // Old entry is stale, evict it and take over this slot
+            // Reset accumulation buffer for this cell
+            AccumulationBuffer.Store4(AccumByteOffset, uint4(0, 0, 0, 0));
+            // Update metadata with new checksum and current frame
+            MetadataBuffer.Store(MetaByteOffset + 0, Checksum);
+            MetadataBuffer.Store(MetaByteOffset + 4, CurrentFrame);
+            // Clear radiance history
+            RadianceCachingBuffer[HashID] = float3(0, 0, 0);
+        }
+        else
+        {
+            // Existing entry is recent, skip this update to avoid light bleeding
+            // Still need to output something for DDGI
+            FinalRadiance = RadianceCachingBuffer[HashID];
+            goto SkipAccumulation;
+        }
+    }
+    else if (IsEmpty)
+    {
+        // First write to this cell - claim it
+        MetadataBuffer.Store(MetaByteOffset + 0, Checksum);
+        MetadataBuffer.Store(MetaByteOffset + 4, CurrentFrame);
+    }
+    else // IsSameCell
+    {
+        // Same cell, update frame to mark as recently used
+        MetadataBuffer.Store(MetaByteOffset + 4, CurrentFrame);
+    }
+#endif // RADIANCE_CACHE_USE_COLLISION_DETECTION
 
     // Scale radiance to integers for atomic operations
     uint3 ScaledRadiance = uint3(saturate(NewRadiance) * RADIANCE_CACHE_RADIANCE_SCALE);
 
-    // Calculate byte offset (16 bytes per entry: 4x uint)
-    uint ByteOffset = HashID * 16;
-
     // Atomic add - thread-safe accumulation
     uint OriginalR, OriginalG, OriginalB, OriginalCount;
-    AccumulationBuffer.InterlockedAdd(ByteOffset + 0, ScaledRadiance.x, OriginalR);
-    AccumulationBuffer.InterlockedAdd(ByteOffset + 4, ScaledRadiance.y, OriginalG);
-    AccumulationBuffer.InterlockedAdd(ByteOffset + 8, ScaledRadiance.z, OriginalB);
-    AccumulationBuffer.InterlockedAdd(ByteOffset + 12, 1u, OriginalCount);
+    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 0, ScaledRadiance.x, OriginalR);
+    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 4, ScaledRadiance.y, OriginalG);
+    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 8, ScaledRadiance.z, OriginalB);
+    AccumulationBuffer.InterlockedAdd(AccumByteOffset + 12, 1u, OriginalCount);
 
     // Read back accumulated values (after our add)
     uint NewR = OriginalR + ScaledRadiance.x;
@@ -295,6 +376,10 @@ void CS(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID, uint
 
     FinalRadiance = lerp(OldRadiance, AccumulatedRadiance, BlendFactor);
     RadianceCachingBuffer[HashID] = FinalRadiance;
+
+#if RADIANCE_CACHE_USE_COLLISION_DETECTION
+SkipAccumulation:
+#endif
 
 #else
     // ============================================================================

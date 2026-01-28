@@ -76,6 +76,7 @@ VK_BINDING(14, 0) RWStructuredBuffer<HitPackedData>             HitCaching      
 VK_BINDING(14, 0) RWStructuredBuffer<float3>                        RadianceCaching                  : register(u5, space2);
 VK_BINDING(14, 0) RWStructuredBuffer<RadianceCacheVisualization>    RadianceCachingVisualization     : register(u5, space3);
 VK_BINDING(14, 0) RWByteAddressBuffer                                RadianceCacheAccumulation        : register(u5, space4);  // SHaRC-style atomic
+VK_BINDING(14, 0) RWByteAddressBuffer                                RadianceCacheMetadata            : register(u5, space5);  // SHaRC-style: checksum + age
 
 
 // Bindless Resources ---------------------------------------------------------------------------------------
@@ -178,6 +179,7 @@ void UnpackData(HitPackedData InData, out HitUnpackedData OutData)
 RWStructuredBuffer<float3>            GetRadianceCachingBuffer() { return RadianceCaching; }
 RWStructuredBuffer<RadianceCacheVisualization>            GetRadianceCachingVisualizationBuffer() { return RadianceCachingVisualization; }
 RWByteAddressBuffer                   GetRadianceCacheAccumulationByteBuffer() { return RadianceCacheAccumulation; }  // SHaRC-style atomic
+RWByteAddressBuffer                   GetRadianceCacheMetadataBuffer() { return RadianceCacheMetadata; }  // SHaRC-style: checksum + age
 
 RaytracingAccelerationStructure GetAccelerationStructure(uint index) { return TLAS[index]; }
 

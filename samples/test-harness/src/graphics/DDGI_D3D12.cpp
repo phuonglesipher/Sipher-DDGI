@@ -773,6 +773,13 @@ namespace Graphics
                 resources.RadianceCacheAccumulationResource->SetName(L"Radiance Cache Accumulation Buffer (SHaRC-style)");
 #endif
 
+                // Create SHaRC-style metadata buffer (uint2: Checksum + Age for collision detection)
+                desc = { sizeof(uint2) * cachingCount, 0, EHeapType::DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+                CHECK(CreateBuffer(d3d, desc, &resources.RadianceCacheMetadataResource), "create radiance cache metadata buffer!\n", log);
+#ifdef GFX_NAME_OBJECTS
+                resources.RadianceCacheMetadataResource->SetName(L"Radiance Cache Metadata Buffer (SHaRC-style: Checksum+Age)");
+#endif
+
             #if !RTXGI_DDGI_RESOURCE_MANAGEMENT
                 // Add the constants structured buffer SRV to the descriptor heap
                 D3D12_UNORDERED_ACCESS_VIEW_DESC uavdesc = {};
@@ -804,6 +811,11 @@ namespace Graphics
                 rawUavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
                 handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_ACCUMULATION * d3dResources.srvDescHeapEntrySize);
                 d3d.device->CreateUnorderedAccessView(resources.RadianceCacheAccumulationResource, nullptr, &rawUavDesc, handle);
+
+                // UAV for SHaRC-style metadata buffer (RWByteAddressBuffer: checksum + age)
+                rawUavDesc.Buffer.NumElements = cachingCount * 2; // 2 uints per entry (checksum + age)
+                handle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_METADATA * d3dResources.srvDescHeapEntrySize);
+                d3d.device->CreateUnorderedAccessView(resources.RadianceCacheMetadataResource, nullptr, &rawUavDesc, handle);
             #endif
 
                 return true;
@@ -1124,28 +1136,14 @@ namespace Graphics
                 return true;
             }
 
-            void ClearRadianceCache(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
+            /**
+             * Clear only the accumulation buffer (called every frame before radiance cache update).
+             * This resets sample counting while preserving temporal history in the radiance buffer.
+             */
+            void ClearRadianceCacheAccumulation(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
             {
-                D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle;
-                CPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
-
                 D3D12_GPU_DESCRIPTOR_HANDLE GPUHeapStart = d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart();
-                D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle;
-                GPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
 
-                D3D12_RESOURCE_BARRIER barrier = {};
-                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                barrier.Transition.pResource = resources.RadianceCachingResource;
-                barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-                barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-                //d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
-
-                float ClearValue[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewFloat(GPUHandle, CPUHandle, resources.RadianceCachingResource, ClearValue, 0, nullptr);
-
-                // Also clear the SHaRC-style accumulation buffer (uint4)
                 D3D12_CPU_DESCRIPTOR_HANDLE AccumCPUHandle;
                 AccumCPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_ACCUMULATION * d3dResources.srvDescHeapEntrySize);
                 D3D12_GPU_DESCRIPTOR_HANDLE AccumGPUHandle;
@@ -1154,7 +1152,47 @@ namespace Graphics
                 UINT ClearValueUint[4] = {0, 0, 0, 0};
                 d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewUint(AccumGPUHandle, AccumCPUHandle, resources.RadianceCacheAccumulationResource, ClearValueUint, 0, nullptr);
 
+                // UAV barrier for accumulation buffer
+                D3D12_RESOURCE_BARRIER barrier = {};
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barrier.UAV.pResource = resources.RadianceCacheAccumulationResource;
                 d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+            }
+
+            /**
+             * Full reset of radiance cache (called at init and when scene/probes change).
+             * Clears radiance buffer (temporal history), accumulation buffer, and metadata buffer.
+             */
+            void ResetRadianceCache(Globals& d3d, GlobalResources& d3dResources, Resources& resources)
+            {
+                D3D12_GPU_DESCRIPTOR_HANDLE GPUHeapStart = d3dResources.srvDescHeap->GetGPUDescriptorHandleForHeapStart();
+
+                // Clear the radiance buffer (temporal history)
+                D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle;
+                CPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
+                D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle;
+                GPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHING * d3dResources.srvDescHeapEntrySize);
+
+                float ClearValue[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewFloat(GPUHandle, CPUHandle, resources.RadianceCachingResource, ClearValue, 0, nullptr);
+
+                // Clear the metadata buffer (checksum + frame for collision detection)
+                D3D12_CPU_DESCRIPTOR_HANDLE MetaCPUHandle;
+                MetaCPUHandle.ptr = d3dResources.srvDescHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_METADATA * d3dResources.srvDescHeapEntrySize);
+                D3D12_GPU_DESCRIPTOR_HANDLE MetaGPUHandle;
+                MetaGPUHandle.ptr = GPUHeapStart.ptr + (DescriptorHeapOffsets::UAV_RADIANCE_CACHE_METADATA * d3dResources.srvDescHeapEntrySize);
+
+                UINT ClearValueUint[4] = {0, 0, 0, 0};
+                d3d.cmdList[d3d.frameIndex]->ClearUnorderedAccessViewUint(MetaGPUHandle, MetaCPUHandle, resources.RadianceCacheMetadataResource, ClearValueUint, 0, nullptr);
+
+                // UAV barrier for metadata buffer
+                D3D12_RESOURCE_BARRIER barrier = {};
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barrier.UAV.pResource = resources.RadianceCacheMetadataResource;
+                d3d.cmdList[d3d.frameIndex]->ResourceBarrier(1, &barrier);
+
+                // Also clear the accumulation buffer
+                ClearRadianceCacheAccumulation(d3d, d3dResources, resources);
             }
 
             void RayTraceVolumes(Globals& d3d, GlobalResources& d3dResources, Resources& resources, DDGIVolume* volumes)
@@ -1432,7 +1470,7 @@ namespace Graphics
                     // Clear the volume's probes at initialization
                     DDGIVolume* volume = static_cast<DDGIVolume*>(resources.volumes[volumeIndex]);
                     volume->ClearProbes(d3d.cmdList[d3d.frameIndex]);
-                    ClearRadianceCache(d3d, d3dResources, resources);
+                    ResetRadianceCache(d3d, d3dResources, resources);
                 }
 
                 // Setup performance stats
@@ -1507,7 +1545,7 @@ namespace Graphics
                         config.ddgi.volumes[config.ddgi.selectedVolume].clearProbes = 0;
                         resources.numVolumeVariabilitySamples[config.ddgi.selectedVolume] = 0;
 
-                        ClearRadianceCache(d3d, d3dResources, resources);
+                        ResetRadianceCache(d3d, d3dResources, resources);
                     }
 
                     // Select the active volumes
@@ -1576,6 +1614,9 @@ namespace Graphics
                     GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
                     RayTraceVolumeCS(d3d, d3dResources, resources, resources.selectedVolumes[volumeIndex]);
                     GPU_TIMESTAMP_END(resources.rtStat->GetGPUQueryEndIndex());
+
+                    // Clear accumulation buffer before radiance cache update (preserves temporal history)
+                    ClearRadianceCacheAccumulation(d3d, d3dResources, resources);
 
                     GPU_TIMESTAMP_BEGIN(resources.rtStat->GetGPUQueryBeginIndex());
                     RayTraceRadianceCacheCS(d3d, d3dResources, resources);
@@ -1661,6 +1702,7 @@ namespace Graphics
                 SAFE_RELEASE(resources.RadianceCachingResource);
                 SAFE_RELEASE(resources.RadianceCachingVisualizationResource);
                 SAFE_RELEASE(resources.RadianceCacheAccumulationResource);
+                SAFE_RELEASE(resources.RadianceCacheMetadataResource);
 
                 // Release volumes
                 for (size_t volumeIndex = 0; volumeIndex < resources.volumes.size(); volumeIndex++)
