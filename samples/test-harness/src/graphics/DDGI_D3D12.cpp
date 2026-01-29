@@ -1908,6 +1908,30 @@ namespace Graphics
                 return success;
             }
 
+            /**
+             * Write the DDGI indirect lighting output texture to disk.
+             */
+            bool WriteIndirectOutputToDisk(Globals& d3d, GlobalResources& d3dResources, Resources& resources, std::string directory)
+            {
+                if (!resources.output) return false;
+
+                CoInitialize(NULL);
+                std::string filename = directory + "/DDGI-IndirectOutput";
+                return WriteResourceToDisk(d3d, filename, resources.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            }
+
+            /**
+             * Write the radiance cache visualization resource to disk.
+             */
+            bool WriteRadianceCacheToDisk(Globals& d3d, GlobalResources& d3dResources, Resources& resources, std::string directory)
+            {
+                if (!resources.RadianceCachingVisualizationResource) return false;
+
+                CoInitialize(NULL);
+                std::string filename = directory + "/RadianceCache-Visualization";
+                return WriteResourceToDisk(d3d, filename, resources.RadianceCachingVisualizationResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            }
+
         } // namespace Graphics::D3D12::RTAO
 
     } // namespace Graphics::D3D12
@@ -1948,6 +1972,16 @@ namespace Graphics
         bool WriteVolumesToDisk(Globals& d3d, GlobalResources& d3dResources, Resources& resources, std::string directory)
         {
             return Graphics::D3D12::DDGI::WriteVolumesToDisk(d3d, d3dResources, resources, directory);
+        }
+
+        bool WriteIndirectOutputToDisk(Globals& d3d, GlobalResources& d3dResources, Resources& resources, std::string directory)
+        {
+            return Graphics::D3D12::DDGI::WriteIndirectOutputToDisk(d3d, d3dResources, resources, directory);
+        }
+
+        bool WriteRadianceCacheToDisk(Globals& d3d, GlobalResources& d3dResources, Resources& resources, std::string directory)
+        {
+            return Graphics::D3D12::DDGI::WriteRadianceCacheToDisk(d3d, d3dResources, resources, directory);
         }
 
     } // namespace Graphics::DDGI

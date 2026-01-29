@@ -60,6 +60,53 @@ void StoreImages(
 }
 
 /**
+ * Capture debug images for Claude Code visual analysis.
+ * Returns true if capture completed and app should exit.
+ */
+bool DebugCapture(
+    Configs::Config& config,
+    Graphics::Globals& gfx,
+    Graphics::GlobalResources& gfxResources,
+    Graphics::RTAO::Resources& rtao,
+    Graphics::DDGI::Resources& ddgi)
+{
+    if (!config.app.debugCaptureEnabled) return false;
+
+    // Wait for the specified number of frames before capturing
+    if (gfx.frameNumber < config.app.debugCaptureFrameDelay) return false;
+
+    LOG_INFO("DebugCapture", "Capturing debug images at frame " + std::to_string(gfx.frameNumber));
+
+    // Create output directory
+    std::filesystem::create_directories(config.app.debugOutputPath);
+
+    // Capture final view (back buffer)
+    LOG_INFO("DebugCapture", "Saving final view...");
+    Graphics::WriteBackBufferToDisk(gfx, config.app.debugOutputPath);
+
+    // Capture indirect lighting (DDGI output)
+    LOG_INFO("DebugCapture", "Saving indirect lighting...");
+    Graphics::DDGI::WriteIndirectOutputToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
+
+    // Capture radiance cache visualization
+    LOG_INFO("DebugCapture", "Saving radiance cache...");
+    Graphics::DDGI::WriteRadianceCacheToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
+
+    // Also save probe volumes for complete debug info
+    LOG_INFO("DebugCapture", "Saving DDGI volumes...");
+    Graphics::DDGI::WriteVolumesToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
+
+    // Save GBuffer for context
+    LOG_INFO("DebugCapture", "Saving GBuffer...");
+    Graphics::GBuffer::WriteGBufferToDisk(gfx, gfxResources, config.app.debugOutputPath);
+
+    LOG_INFO("DebugCapture", "Debug capture complete. Images saved to: " + config.app.debugOutputPath);
+    LOG_INFO("DebugCapture", "=== DEBUG_CAPTURE_COMPLETE ===");
+
+    return true; // Signal to exit
+}
+
+/**
  * Run the Test Harness.
  */
 int Run(const std::vector<std::string>& arguments)
@@ -503,6 +550,13 @@ int Run(const std::vector<std::string>& arguments)
         if (input.event == Inputs::EInputEvent::SAVE_IMAGES || input.event == Inputs::EInputEvent::SCREENSHOT)
         {
             StoreImages(input.event, config, gfx, gfxResources, rtao, ddgi);
+        }
+
+        // Debug Capture (for Claude Code visual debugging)
+        if (DebugCapture(config, gfx, gfxResources, rtao, ddgi))
+        {
+            // Debug capture complete, exit application
+            break;
         }
 
     #ifdef GFX_PERF_INSTRUMENTATION

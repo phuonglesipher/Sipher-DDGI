@@ -626,6 +626,10 @@ namespace Configs
 
     /**
      * Parse the command line arguments and get the configuration file path.
+     * Supports optional debug capture parameters:
+     *   --debug-capture              Enable debug capture mode
+     *   --debug-output <folder>      Output folder for debug images (default: visual_debug)
+     *   --debug-frames <N>           Frame delay before capture (default: 60)
      */
     bool ParseCommandLine(const std::vector<std::string>& arguments, Config& config, std::ofstream& log)
     {
@@ -636,15 +640,65 @@ namespace Configs
             return false;
         }
 
-        if (arguments.size() > 1)
+        // Parse arguments
+        bool configPathFound = false;
+        for (size_t i = 0; i < arguments.size(); i++)
         {
-            // Early out, there must be a single argument after the executable path
-            log << "\nError: incorrect command line usage! A single argument - the path to the configuration file - must be specified.\n";
-            return false;
+            const std::string& arg = arguments[i];
+
+            if (arg == "--debug-capture")
+            {
+                config.app.debugCaptureEnabled = true;
+                log << "Debug capture mode enabled\n";
+            }
+            else if (arg == "--debug-output")
+            {
+                if (i + 1 < arguments.size())
+                {
+                    config.app.debugOutputPath = arguments[++i];
+                    log << "Debug output path: " << config.app.debugOutputPath << "\n";
+                }
+                else
+                {
+                    log << "\nError: --debug-output requires a folder path argument\n";
+                    return false;
+                }
+            }
+            else if (arg == "--debug-frames")
+            {
+                if (i + 1 < arguments.size())
+                {
+                    config.app.debugCaptureFrameDelay = static_cast<uint32_t>(std::stoi(arguments[++i]));
+                    log << "Debug capture frame delay: " << config.app.debugCaptureFrameDelay << "\n";
+                }
+                else
+                {
+                    log << "\nError: --debug-frames requires a number argument\n";
+                    return false;
+                }
+            }
+            else if (arg[0] != '-')
+            {
+                // This is the config file path (not starting with -)
+                if (configPathFound)
+                {
+                    log << "\nError: multiple config file paths specified\n";
+                    return false;
+                }
+                config.app.filepath = arg;
+                configPathFound = true;
+            }
+            else
+            {
+                log << "\nWarning: unknown argument '" << arg << "' ignored\n";
+            }
         }
 
-        // Set the config file path
-        config.app.filepath = arguments[0];
+        if (!configPathFound)
+        {
+            log << "\nError: a configuration file must be specified!\n";
+            return false;
+        }
 
         return true;
     }

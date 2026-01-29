@@ -233,6 +233,11 @@ namespace Configs
         std::string gpuName = "";
 
         ERenderMode renderMode = ERenderMode::DDGI;
+
+        // Debug capture mode (for Claude Code visual debugging)
+        bool        debugCaptureEnabled = false;
+        std::string debugOutputPath = "visual_debug";
+        uint32_t    debugCaptureFrameDelay = 60;  // Wait N frames before capture
     };
 
     struct Config

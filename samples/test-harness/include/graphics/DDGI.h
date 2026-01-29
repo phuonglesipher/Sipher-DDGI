@@ -38,5 +38,7 @@ namespace Graphics
         bool CompileDDGIVolumeShaders(Globals& vk, const DDGIVolumeDesc& volumeDesc, std::vector<Shaders::ShaderProgram>& volumeShaders, bool spirv, std::ofstream& log);
 
         bool WriteVolumesToDisk(Globals& globals, GlobalResources& gfxResources, Resources& resources, std::string directory);
+        bool WriteIndirectOutputToDisk(Globals& globals, GlobalResources& gfxResources, Resources& resources, std::string directory);
+        bool WriteRadianceCacheToDisk(Globals& globals, GlobalResources& gfxResources, Resources& resources, std::string directory);
     }
 }
