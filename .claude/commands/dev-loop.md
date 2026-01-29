@@ -19,7 +19,7 @@ You are a development loop assistant. Your job is to:
 
 Run the shader precompiler:
 ```bash
-powershell -Command "& 'D:\Sipher-DDGI\Build\tools\ShaderCompiler.exe' --manifest 'D:\Sipher-DDGI\samples\test-harness\shaders.json' --output 'D:\Sipher-DDGI\Build\compiled_shaders' --verbose 2>&1"
+powershell -Command "& './Build/tools/ShaderCompiler.exe' --manifest './samples/test-harness/shaders.json' --output './Build/compiled_shaders' --verbose 2>&1"
 ```
 
 Check `shader_compile.log` for errors. If there are shader compilation errors:
@@ -33,7 +33,7 @@ Check `shader_compile.log` for errors. If there are shader compilation errors:
 
 Run CMake build:
 ```bash
-cd "D:\Sipher-DDGI" && cmake --build build --config Release --target TestHarness-D3D12 2>&1
+cmake --build build --config Release --target TestHarness-D3D12 2>&1
 ```
 
 If there are C++ compilation errors:
@@ -47,14 +47,14 @@ If there are C++ compilation errors:
 
 Start the application:
 ```bash
-cd "D:\Sipher-DDGI\Build\samples\bin\d3d12\Release" && start TestHarness-D3D12.exe "D:/Sipher-DDGI/samples/test-harness/config/cornell.ini"
+cd "./Build/samples/bin/d3d12/Release" && start ./TestHarness-D3D12.exe "../../../../samples/test-harness/config/cornell.ini"
 ```
 
 ### Step 4: Monitor Application Log
 
 Wait 10-15 seconds for the app to initialize, then read the log:
 ```bash
-cat "D:\Sipher-DDGI\Build\samples\bin\d3d12\Release\app_log.txt"
+cat "./Build/samples/bin/d3d12/Release/app_log.txt"
 ```
 
 Check for:
@@ -104,9 +104,9 @@ Report success to the user.
 
 ### Log File Locations
 
-- App Log: `D:\Sipher-DDGI\Build\samples\bin\d3d12\Release\app_log.txt`
-- Legacy Log: `D:\Sipher-DDGI\Build\samples\bin\d3d12\Release\log.txt`
-- Shader Log: `D:\Sipher-DDGI\shader_compile.log`
+- App Log: `./Build/samples/bin/d3d12/Release/app_log.txt`
+- Legacy Log: `./Build/samples/bin/d3d12/Release/log.txt`
+- Shader Log: `./shader_compile.log`
 
 ### Important Notes
 
@@ -115,3 +115,16 @@ Report success to the user.
 - To stop the app, use Task Manager or let user close it
 - Maximum 5 fix attempts per error type before asking user for help
 - Report progress to user at each step
+
+### Quick Reference
+
+```bash
+# Full workflow
+powershell -Command "& './Build/tools/ShaderCompiler.exe' --manifest './samples/test-harness/shaders.json' --output './Build/compiled_shaders' --verbose 2>&1"
+cmake --build build --config Release --target TestHarness-D3D12
+cd "./Build/samples/bin/d3d12/Release" && start ./TestHarness-D3D12.exe "../../../../samples/test-harness/config/cornell.ini"
+
+# Check logs
+cat ./Build/samples/bin/d3d12/Release/app_log.txt
+cat ./shader_compile.log
+```
