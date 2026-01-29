@@ -60,7 +60,23 @@ void StoreImages(
 }
 
 /**
+ * Debug capture state machine for multi-frame capture.
+ */
+enum class EDebugCaptureState
+{
+    WAITING,              // Waiting for frame delay
+    CAPTURE_NORMAL,       // Capture normal view and textures
+    SETUP_RADIANCE_CACHE, // Enable radiance cache visualization
+    WAIT_FOR_RENDER,      // Wait for one frame to render with visualization
+    CAPTURE_RADIANCE_CACHE, // Capture radiance cache view
+    DONE                  // Capture complete
+};
+
+static EDebugCaptureState g_debugCaptureState = EDebugCaptureState::WAITING;
+
+/**
  * Capture debug images for Claude Code visual analysis.
+ * Uses multi-frame capture to get radiance cache visualization.
  * Returns true if capture completed and app should exit.
  */
 bool DebugCapture(
@@ -72,38 +88,87 @@ bool DebugCapture(
 {
     if (!config.app.debugCaptureEnabled) return false;
 
-    // Wait for the specified number of frames before capturing
-    if (gfx.frameNumber < config.app.debugCaptureFrameDelay) return false;
+    switch (g_debugCaptureState)
+    {
+        case EDebugCaptureState::WAITING:
+            // Wait for the specified number of frames before capturing
+            if (gfx.frameNumber >= config.app.debugCaptureFrameDelay)
+            {
+                g_debugCaptureState = EDebugCaptureState::CAPTURE_NORMAL;
+            }
+            return false;
 
-    LOG_INFO("DebugCapture", "Capturing debug images at frame " + std::to_string(gfx.frameNumber));
+        case EDebugCaptureState::CAPTURE_NORMAL:
+        {
+            LOG_INFO("DebugCapture", "Capturing debug images at frame " + std::to_string(gfx.frameNumber));
 
-    // Create output directory
-    std::filesystem::create_directories(config.app.debugOutputPath);
+            // Create output directory
+            std::filesystem::create_directories(config.app.debugOutputPath);
 
-    // Capture final view (back buffer)
-    LOG_INFO("DebugCapture", "Saving final view...");
-    Graphics::WriteBackBufferToDisk(gfx, config.app.debugOutputPath);
+            // Capture final view (back buffer)
+            LOG_INFO("DebugCapture", "Saving final view...");
+            Graphics::WriteBackBufferToDisk(gfx, config.app.debugOutputPath);
 
-    // Capture indirect lighting (DDGI output)
-    LOG_INFO("DebugCapture", "Saving indirect lighting...");
-    Graphics::DDGI::WriteIndirectOutputToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
+            // Capture indirect lighting (DDGI output)
+            LOG_INFO("DebugCapture", "Saving indirect lighting...");
+            Graphics::DDGI::WriteIndirectOutputToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
 
-    // Capture radiance cache visualization
-    LOG_INFO("DebugCapture", "Saving radiance cache...");
-    Graphics::DDGI::WriteRadianceCacheToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
+            // Save probe volumes
+            LOG_INFO("DebugCapture", "Saving DDGI volumes...");
+            Graphics::DDGI::WriteVolumesToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
 
-    // Also save probe volumes for complete debug info
-    LOG_INFO("DebugCapture", "Saving DDGI volumes...");
-    Graphics::DDGI::WriteVolumesToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
+            // Save GBuffer for context
+            LOG_INFO("DebugCapture", "Saving GBuffer...");
+            Graphics::GBuffer::WriteGBufferToDisk(gfx, gfxResources, config.app.debugOutputPath);
 
-    // Save GBuffer for context
-    LOG_INFO("DebugCapture", "Saving GBuffer...");
-    Graphics::GBuffer::WriteGBufferToDisk(gfx, gfxResources, config.app.debugOutputPath);
+            // Setup for radiance cache capture next frame
+            g_debugCaptureState = EDebugCaptureState::SETUP_RADIANCE_CACHE;
+            return false;
+        }
 
-    LOG_INFO("DebugCapture", "Debug capture complete. Images saved to: " + config.app.debugOutputPath);
-    LOG_INFO("DebugCapture", "=== DEBUG_CAPTURE_COMPLETE ===");
+        case EDebugCaptureState::SETUP_RADIANCE_CACHE:
+        {
+            // Enable radiance cache visualization for next frame
+            LOG_INFO("DebugCapture", "Enabling radiance cache visualization...");
+            config.ddgi.showWorldRadianceCache = true;
+            config.ddgi.showDirectRadianceCache = true;
+            config.ddgi.showIndirectRadianceCache = true;
+            g_debugCaptureState = EDebugCaptureState::WAIT_FOR_RENDER;
+            return false;
+        }
 
-    return true; // Signal to exit
+        case EDebugCaptureState::WAIT_FOR_RENDER:
+        {
+            // Wait one frame for the visualization to be rendered
+            // The visualization was enabled last frame, now it's been rendered
+            g_debugCaptureState = EDebugCaptureState::CAPTURE_RADIANCE_CACHE;
+            return false;
+        }
+
+        case EDebugCaptureState::CAPTURE_RADIANCE_CACHE:
+        {
+            // Capture radiance cache visualization (rendered to back buffer)
+            LOG_INFO("DebugCapture", "Saving world radiance cache visualization...");
+
+            // Save back buffer as radiance cache visualization
+            std::string radianceCachePath = config.app.debugOutputPath + "/RadianceCache-World";
+            Graphics::D3D12::WriteResourceToDisk(gfx, radianceCachePath, gfx.backBuffer[gfx.frameIndex], D3D12_RESOURCE_STATE_PRESENT);
+
+            // Restore settings
+            config.ddgi.showWorldRadianceCache = false;
+
+            LOG_INFO("DebugCapture", "Debug capture complete. Images saved to: " + config.app.debugOutputPath);
+            LOG_INFO("DebugCapture", "=== DEBUG_CAPTURE_COMPLETE ===");
+
+            g_debugCaptureState = EDebugCaptureState::DONE;
+            return true; // Signal to exit
+        }
+
+        case EDebugCaptureState::DONE:
+            return true;
+    }
+
+    return false;
 }
 
 /**
