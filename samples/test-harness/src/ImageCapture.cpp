@@ -18,8 +18,117 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <cmath>
+
 namespace ImageCapture
 {
+
+    /**
+     * Convert IEEE 754 half-precision float (16-bit) to single-precision float (32-bit).
+     */
+    inline float HalfToFloat(uint16_t h)
+    {
+        uint32_t sign = (h >> 15) & 0x1;
+        uint32_t exponent = (h >> 10) & 0x1F;
+        uint32_t mantissa = h & 0x3FF;
+
+        if (exponent == 0)
+        {
+            if (mantissa == 0)
+            {
+                // Zero
+                uint32_t result = sign << 31;
+                return *reinterpret_cast<float*>(&result);
+            }
+            else
+            {
+                // Denormalized number
+                while (!(mantissa & 0x400))
+                {
+                    mantissa <<= 1;
+                    exponent--;
+                }
+                exponent++;
+                mantissa &= ~0x400;
+            }
+        }
+        else if (exponent == 31)
+        {
+            // Inf or NaN
+            uint32_t result = (sign << 31) | 0x7F800000 | (mantissa << 13);
+            return *reinterpret_cast<float*>(&result);
+        }
+
+        exponent = exponent + (127 - 15);
+        mantissa = mantissa << 13;
+
+        uint32_t result = (sign << 31) | (exponent << 23) | mantissa;
+        return *reinterpret_cast<float*>(&result);
+    }
+
+    /**
+     * Simple Reinhard tone mapping for HDR to LDR conversion.
+     */
+    inline float ToneMapReinhard(float hdr)
+    {
+        return hdr / (1.0f + hdr);
+    }
+
+    /**
+     * Convert R16G16B16A16_FLOAT texture data to 8-bit RGBA with tone mapping.
+     * This handles HDR values that WIC cannot properly convert.
+     */
+    bool ConvertHDRToLDR(
+        uint32_t width,
+        uint32_t height,
+        uint64_t srcRowPitch,
+        const unsigned char* pSrcData,
+        std::vector<unsigned char>& converted)
+    {
+        converted.resize(width * height * 4);
+
+        for (uint32_t y = 0; y < height; y++)
+        {
+            const uint16_t* srcRow = reinterpret_cast<const uint16_t*>(pSrcData + y * srcRowPitch);
+            unsigned char* dstRow = converted.data() + y * width * 4;
+
+            for (uint32_t x = 0; x < width; x++)
+            {
+                // Read RGBA as half-floats (4 x 16-bit)
+                float r = HalfToFloat(srcRow[x * 4 + 0]);
+                float g = HalfToFloat(srcRow[x * 4 + 1]);
+                float b = HalfToFloat(srcRow[x * 4 + 2]);
+                float a = HalfToFloat(srcRow[x * 4 + 3]);
+
+                // Handle NaN/Inf
+                if (!std::isfinite(r)) r = 0.0f;
+                if (!std::isfinite(g)) g = 0.0f;
+                if (!std::isfinite(b)) b = 0.0f;
+                if (!std::isfinite(a)) a = 1.0f;
+
+                // Apply exposure boost to make dim indirect lighting visible
+                // This is for debug visualization only (values are typically 0.001-0.1 range)
+                const float exposure = 200.0f;
+                r = (std::max)(0.0f, r) * exposure;
+                g = (std::max)(0.0f, g) * exposure;
+                b = (std::max)(0.0f, b) * exposure;
+
+                // Tone map RGB (HDR to LDR)
+                r = ToneMapReinhard(r);
+                g = ToneMapReinhard(g);
+                b = ToneMapReinhard(b);
+                a = (std::min)((std::max)(0.0f, a), 1.0f);
+
+                // Convert to 8-bit
+                dstRow[x * 4 + 0] = static_cast<unsigned char>(r * 255.0f + 0.5f);
+                dstRow[x * 4 + 1] = static_cast<unsigned char>(g * 255.0f + 0.5f);
+                dstRow[x * 4 + 2] = static_cast<unsigned char>(b * 255.0f + 0.5f);
+                dstRow[x * 4 + 3] = static_cast<unsigned char>(a * 255.0f + 0.5f);
+            }
+        }
+
+        return true;
+    }
 
     /**
      * Write image data to a PNG format file.
@@ -55,6 +164,7 @@ namespace ImageCapture
 
     /**
      * Convert the data format of a D3D resource using Windows Imaging Component (WIC).
+     * For HDR formats (R16G16B16A16_FLOAT), uses custom tone-mapped conversion.
      */
     HRESULT ConvertTextureResource(
         const D3D12_RESOURCE_DESC desc,
@@ -63,6 +173,22 @@ namespace ImageCapture
         unsigned char* pMappedMemory,
         std::vector<unsigned char>& converted)
     {
+        // Use custom HDR to LDR conversion for R16G16B16A16_FLOAT
+        // WIC doesn't properly handle HDR values > 1.0
+        if (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+        {
+            if (ConvertHDRToLDR(
+                static_cast<uint32_t>(desc.Width),
+                static_cast<uint32_t>(desc.Height),
+                dstRowPitch,
+                pMappedMemory,
+                converted))
+            {
+                return S_OK;
+            }
+            return E_FAIL;
+        }
+
         bool sRGB = false;
         WICPixelFormatGUID pfGuid;
 
@@ -70,7 +196,6 @@ namespace ImageCapture
         switch (desc.Format)
         {
             case DXGI_FORMAT_R32G32B32A32_FLOAT:            pfGuid = GUID_WICPixelFormat128bppRGBAFloat; break;
-            case DXGI_FORMAT_R16G16B16A16_FLOAT:            pfGuid = GUID_WICPixelFormat64bppRGBAHalf; break;
             case DXGI_FORMAT_R16G16B16A16_UNORM:            pfGuid = GUID_WICPixelFormat64bppRGBA; break;
             case DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:    pfGuid = GUID_WICPixelFormat32bppRGBA1010102XR; break;
             case DXGI_FORMAT_R10G10B10A2_UNORM:             pfGuid = GUID_WICPixelFormat32bppRGBA1010102; break;

@@ -143,7 +143,7 @@ namespace Graphics
             float                        CascadeCellRadius = 0.2f;
             float                        CascadeDistance = 20.0f;
             float                        RadianceCacheSampleCount = 16.0f;
-            UINT                         FinalGatherDownScale = 2;
+            UINT                         FinalGatherDownScale = 1;  // Set to 1 for full resolution indirect lighting (better for debug)
         };
 
         struct RenderTargets
