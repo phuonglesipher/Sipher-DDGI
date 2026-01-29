@@ -1922,14 +1922,15 @@ namespace Graphics
 
             /**
              * Write the radiance cache visualization resource to disk.
+             * NOTE: RadianceCachingVisualizationResource is a StructuredBuffer, not a Texture2D.
+             * WriteResourceToDisk expects textures, so this function is currently a no-op.
+             * TODO: Implement buffer-to-image conversion or a separate buffer dump function.
              */
             bool WriteRadianceCacheToDisk(Globals& d3d, GlobalResources& d3dResources, Resources& resources, std::string directory)
             {
-                if (!resources.RadianceCachingVisualizationResource) return false;
-
-                CoInitialize(NULL);
-                std::string filename = directory + "/RadianceCache-Visualization";
-                return WriteResourceToDisk(d3d, filename, resources.RadianceCachingVisualizationResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                // Skip - RadianceCachingVisualizationResource is a StructuredBuffer, not a texture
+                // WriteResourceToDisk uses CopyTextureRegion which doesn't work with buffers
+                return true;
             }
 
         } // namespace Graphics::D3D12::RTAO
