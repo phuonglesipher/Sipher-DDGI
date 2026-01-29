@@ -61,15 +61,19 @@ void StoreImages(
 
 /**
  * Debug capture state machine for multi-frame capture.
+ * Each visualization mode requires: setup -> wait -> capture cycle.
  */
 enum class EDebugCaptureState
 {
-    WAITING,              // Waiting for frame delay
-    CAPTURE_NORMAL,       // Capture normal view and textures
-    SETUP_RADIANCE_CACHE, // Enable radiance cache visualization
-    WAIT_FOR_RENDER,      // Wait for one frame to render with visualization
-    CAPTURE_RADIANCE_CACHE, // Capture radiance cache view
-    DONE                  // Capture complete
+    WAITING,                    // Waiting for frame delay
+    CAPTURE_NORMAL,             // Capture normal view and textures
+    SETUP_INDIRECT_LIGHTING,    // Enable indirect lighting visualization
+    WAIT_FOR_INDIRECT,          // Wait for render
+    CAPTURE_INDIRECT_LIGHTING,  // Capture indirect lighting view
+    SETUP_RADIANCE_CACHE,       // Enable radiance cache visualization
+    WAIT_FOR_RADIANCE_CACHE,    // Wait for render
+    CAPTURE_RADIANCE_CACHE,     // Capture radiance cache view
+    DONE                        // Capture complete
 };
 
 static EDebugCaptureState g_debugCaptureState = EDebugCaptureState::WAITING;
@@ -109,10 +113,6 @@ bool DebugCapture(
             LOG_INFO("DebugCapture", "Saving final view...");
             Graphics::WriteBackBufferToDisk(gfx, config.app.debugOutputPath);
 
-            // Capture indirect lighting (DDGI output)
-            LOG_INFO("DebugCapture", "Saving indirect lighting...");
-            Graphics::DDGI::WriteIndirectOutputToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
-
             // Save probe volumes
             LOG_INFO("DebugCapture", "Saving DDGI volumes...");
             Graphics::DDGI::WriteVolumesToDisk(gfx, gfxResources, ddgi, config.app.debugOutputPath);
@@ -121,7 +121,37 @@ bool DebugCapture(
             LOG_INFO("DebugCapture", "Saving GBuffer...");
             Graphics::GBuffer::WriteGBufferToDisk(gfx, gfxResources, config.app.debugOutputPath);
 
-            // Setup for radiance cache capture next frame
+            // Setup for indirect lighting capture next frame
+            g_debugCaptureState = EDebugCaptureState::SETUP_INDIRECT_LIGHTING;
+            return false;
+        }
+
+        case EDebugCaptureState::SETUP_INDIRECT_LIGHTING:
+        {
+            // Enable indirect lighting visualization for next frame
+            LOG_INFO("DebugCapture", "Enabling indirect lighting visualization...");
+            config.ddgi.showIndirect = true;
+            g_debugCaptureState = EDebugCaptureState::WAIT_FOR_INDIRECT;
+            return false;
+        }
+
+        case EDebugCaptureState::WAIT_FOR_INDIRECT:
+        {
+            // Wait one frame for the visualization to be rendered
+            g_debugCaptureState = EDebugCaptureState::CAPTURE_INDIRECT_LIGHTING;
+            return false;
+        }
+
+        case EDebugCaptureState::CAPTURE_INDIRECT_LIGHTING:
+        {
+            // Capture indirect lighting visualization (rendered to back buffer)
+            LOG_INFO("DebugCapture", "Saving indirect lighting visualization...");
+
+            std::string indirectPath = config.app.debugOutputPath + "/IndirectLighting";
+            Graphics::D3D12::WriteResourceToDisk(gfx, indirectPath, gfx.backBuffer[gfx.frameIndex], D3D12_RESOURCE_STATE_PRESENT);
+
+            // Restore setting and move to radiance cache
+            config.ddgi.showIndirect = false;
             g_debugCaptureState = EDebugCaptureState::SETUP_RADIANCE_CACHE;
             return false;
         }
@@ -133,14 +163,13 @@ bool DebugCapture(
             config.ddgi.showWorldRadianceCache = true;
             config.ddgi.showDirectRadianceCache = true;
             config.ddgi.showIndirectRadianceCache = true;
-            g_debugCaptureState = EDebugCaptureState::WAIT_FOR_RENDER;
+            g_debugCaptureState = EDebugCaptureState::WAIT_FOR_RADIANCE_CACHE;
             return false;
         }
 
-        case EDebugCaptureState::WAIT_FOR_RENDER:
+        case EDebugCaptureState::WAIT_FOR_RADIANCE_CACHE:
         {
             // Wait one frame for the visualization to be rendered
-            // The visualization was enabled last frame, now it's been rendered
             g_debugCaptureState = EDebugCaptureState::CAPTURE_RADIANCE_CACHE;
             return false;
         }
